@@ -1,16 +1,67 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Menu, X, UserPlus } from "lucide-react";
+import { Menu, X, UserPlus, LogIn, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from '../../lib/supabase';
+
 
 export default function Topbar() {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Stavy pro přihlášeného uživatele
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<{ first_name: string; last_name: string } | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Odkazy upravené pro tvé EMS studio
+  useEffect(() => {
+    const getAuthSession = async () => {
+      // 1. Zjistíme aktivní session uživatele
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      
+      if (authUser) {
+        setUser(authUser);
+        
+        // 2. Vytáhneme jméno a příjmení z tabulky profiles
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('id', authUser.id)
+          .single();
+          
+        if (profileData) {
+          setProfile(profileData);
+        }
+      } else {
+        setUser(null);
+        setProfile(null);
+      }
+      setLoading(false);
+    };
+
+    getAuthSession();
+
+    // Sledování změn stavu (přihlášení/odhlášení) v reálném čase
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        getAuthSession();
+      } else {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   const publicLinks = [
     { href: "/", label: "Domů" },
     { href: "#o-ems", label: "Co je EMS?" },
@@ -21,31 +72,57 @@ export default function Topbar() {
   return (
     <>
       {/* --- MODRÝ HORNÍ TOP BAR --- */}
-      <div className="bg-[#2563eb] text-white py-2 z-60 relative">
+      <div className="bg-[#2563eb] text-white py-2 z-[60] relative">
         <div className="max-w-7xl mx-auto px-6 flex justify-between items-center text-[10px] uppercase tracking-wider font-bold">
           <div className="flex items-center gap-4">
             <span className="opacity-90 hidden md:block border-r border-white/20 pr-4 italic">
-              PK Perfomance Studio - Revoluční 20minutový trénink pod vedením trenéra.
+              PK Performance Studio - Revoluční 20minutový trénink pod vedením trenéra.
             </span>
           </div>
 
           <div className="flex items-center gap-6">
+            {/* BEZPEČNÉ SVG IKONY */}
             <div className="flex gap-4 items-center mr-2">
-              <a href="https://facebook.com" target="_blank" rel="noreferrer" className="hover:text-blue-200">
-                <Menu size={14} />
+              {/* Facebook */}
+              <a href="https://facebook.com" target="_blank" rel="noreferrer" className="hover:text-blue-200 transition-colors" aria-label="Facebook">
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M22 12c0-5.52-4.48-10-10-10S2 6.48 2 12c0 4.84 3.44 8.87 8 9.8V15H8v-3h2V9.5C10 7.57 11.57 6 13.5 6H16v3h-2c-.55 0-1 .45-1 1v2h3v3h-3v6.95c4.56-.93 8-4.96 8-9.8z"/>
+                </svg>
               </a>
-              <a href="https://instagram.com" target="_blank" rel="noreferrer" className="hover:text-blue-200">
-                <X size={14} />
+              {/* Instagram */}
+              <a href="https://instagram.com" target="_blank" rel="noreferrer" className="hover:text-blue-200 transition-colors" aria-label="Instagram">
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.051.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/>
+                </svg>
               </a>
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-4 border-l border-white/20 pl-4 sm:pl-6">
-              <Link 
-                href="/rezervace" 
-                className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1 rounded-sm shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
-              >
-                Rezervovat lekci
-              </Link>
+            <div className="flex items-center gap-2 sm:gap-4 border-l border-white/20 pl-4 sm:pl-6 min-h-[28px]">
+              {loading ? (
+                // Načítací indikátor, aby bar neproblikával
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : user ? (
+                // DYNAMICKÝ STAV: Přihlášený uživatel
+                <div className="flex items-center gap-3">
+                  <span className="text-emerald-300 normal-case hidden sm:inline">
+                    {profile?.first_name} {profile?.last_name}
+                  </span>
+                  <Link 
+                    href="/dashboard" 
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded-sm shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
+                  >
+                    <LayoutDashboard size={12} /> Vstoupit do klientské zóny
+                  </Link>
+                </div>
+              ) : (
+                // DYNAMICKÝ STAV: Nepřihlášený uživatel
+                <Link 
+                  href="/prihlaseni" 
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1 rounded-sm shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
+                >
+                  <LogIn size={12} /> Přihlásit se
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -55,9 +132,16 @@ export default function Topbar() {
       <nav className="sticky top-0 z-50 shadow-sm bg-[#DDDDDD]">
         <div className="px-6 relative z-10 h-20 md:h-24 flex items-center">
           <div className="max-w-7xl mx-auto w-full flex justify-between items-center">
-            {/* Logo */}
-            <Link href="/" className="flex items-center shrink-0 text-xl font-bold tracking-tight text-zinc-900">
-              EMS<span className="text-[#2563eb]">Express</span>
+            
+            <Link href="/" className="flex items-center shrink-0">
+              <Image 
+                src="/logo.svg" 
+                alt="EMSExpress Logo"
+                width={150}               
+                height={50}               
+                className="h-10 md:h-18 w-auto object-contain" 
+                priority                  
+              />
             </Link>
 
             {/* Odkazy pro PC */}
@@ -102,20 +186,31 @@ export default function Topbar() {
 
       {/* --- MOBILNÍ MENU --- */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-x-0 top-29 md:hidden bg-white border-b border-slate-200 p-6 flex flex-col gap-4 font-bold uppercase text-sm shadow-lg z-100">
+        <div className="fixed inset-x-0 top-20 md:hidden bg-white border-b border-slate-200 p-6 flex flex-col gap-4 font-bold uppercase text-sm shadow-lg z-[100]">
           {publicLinks.map(link => (
             <Link key={link.href} href={link.href} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 hover:text-[#2563eb]">
               {link.label}
             </Link>
           ))}
           <hr className="border-slate-200" />
-          <Link 
-            href="/rezervace" 
-            onClick={() => setIsMobileMenuOpen(false)}
-            className="text-orange-600 flex items-center gap-2"
-          >
-            <UserPlus size={16} /> Rezervace lekce
-          </Link>
+          
+          {user ? (
+            <Link 
+              href="/dashboard" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="text-emerald-600 flex items-center gap-2"
+            >
+              <LayoutDashboard size={16} /> Klientská zóna ({profile?.first_name})
+            </Link>
+          ) : (
+            <Link 
+              href="/prihlaseni" 
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="text-orange-600 flex items-center gap-2"
+            >
+              <LogIn size={16} /> Přihlásit se
+            </Link>
+          )}
         </div>
       )}
     </>

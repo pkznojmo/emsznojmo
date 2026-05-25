@@ -1,0 +1,105 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. ROLE V SYSTÉMU
+enum Role {
+  CUSTOMER
+  TRAINER
+  ADMIN
+}
+
+// 2. UŽIVATELÉ (Společní pro Trenéry i Zákazníky)
+model User {
+  id            String   @id
+  email         String   @unique
+  role          Role     @default(CUSTOMER)
+  
+  // Osobní údaje
+  firstName     String
+  lastName      String
+  phone         String
+  birthDate     DateTime?
+  address       String?
+  clothingSize  String?  // Velikost oblečení (S, M, L, XL...)
+  goals         String?  // Cíle (hubnutí, svaly, kondice...)
+  createdAt     DateTime @default(now())
+
+  // Vazby (Relace)
+  trainingsAsTrainer  Training[]    @relation("TrainerTrainings")
+  trainingsAsCustomer Training[]    @relation("CustomerTrainings")
+  trainerSchedules    WeeklySchedule[]
+  trainerExceptions   ScheduleException[]
+  bodyMeasurements    BodyMeasurement[]
+}
+
+// 3. PRAVIDELNÝ TÝDENNÍ ROZVRH TRENÉRA
+model WeeklySchedule {
+  id        String   @id @default(cuid())
+  trainerId String
+  dayOfWeek String   // po, ut, st, ct, pa, so, ne
+  startTime String   // např. "06:30"
+  endTime   String   // např. "12:30"
+
+  trainer   User     @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@unique([trainerId, dayOfWeek, startTime, endTime])
+}
+
+// 4. VÝJIMKY Z ROZVRHU TRENÉRA (Dovolené, záskoky, extra časy)
+model ScheduleException {
+  id          String   @id @default(cuid())
+  trainerId   String
+  date        String   // Konkrétní datum, např. "2026-06-15"
+  startTime   String   // např. "08:00"
+  endTime     String   // např. "10:00"
+  isAvailable Boolean  // TRUE = trenér mimořádně MŮŽE, FALSE = trenér má volno/nemůže (dovolená)
+
+  trainer     User     @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+}
+
+// 5. KALENDÁŘ TRÉNINKŮ (Minulé i nadcházející)
+model Training {
+  id          String         @id @default(cuid())
+  date        String         // Datum tréninku "2026-05-28"
+  time        String         // Čas tréninku "08:30"
+  status      TrainingStatus @default(SCHEDULED)
+  
+  // Kdo s kým trénuje
+  trainerId   String
+  customerId  String?        // Volitelné - pokud je null, termín je vypsaný, ale volný k rezervaci
+
+  trainer     User           @relation("TrainerTrainings", fields: [trainerId], references: [id])
+  customer    User?          @relation("CustomerTrainings", fields: [customerId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime       @default(now())
+
+  @@unique([trainerId, date, time]) // Trenér nemůže mít dva tréninky ve stejný čas
+}
+
+enum TrainingStatus {
+  SCHEDULED   // Naplánovaný / Rezervovaný
+  COMPLETED   // Proběhlý
+  CANCELLED   // Zrušený
+}
+
+// 6. HISTORIE MĚŘENÍ TĚLA (Pro sledování pokroku zákazníka)
+model BodyMeasurement {
+  id          String   @id @default(cuid())
+  customerId  String
+  date        DateTime @default(now())
+  
+  // Obvody v cm
+  weight      Float?   // Váha v kg
+  waist       Float?   // Pas
+  thigh       Float?   // Stehno
+  chest       Float?   // Hrudník
+  arms        Float?   // Paže
+  bodyFat     Float?   // % tuku
+
+  customer    User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
