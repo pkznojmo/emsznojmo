@@ -71,9 +71,10 @@ export default function Topbar() {
 
   const publicLinks = [
     { href: "/", label: "Domů" },
-    { href: "/#o-ems", label: "Co je EMS?" },
-    { href: "/#cenik", label: "Ceník" },
-    { href: "/#kontakt", label: "Kontakt" },
+    { href: "/o-ems", label: "Co je EMS?" },
+    { href: "/pro-koho", label: "Pro koho je EMS?"},
+    { href: "/cenik", label: "Ceník" },
+    { href: "/kontakt", label: "Kontakt" },
   ];
 
   return (

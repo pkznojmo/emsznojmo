@@ -6,10 +6,11 @@ import Footer from "./comp/Footer";
 
 const inter = Inter({ subsets: ["latin"] });
 
-export const metadata: Metadata = {
-  title: "EMS Express | Moderní 20minutový trénink",
-  description: "Dostaňte se do formy za pouhých 20 minut týdně díky revoluční technologii EMS. Rychlé, efektivní, s osobním trenérem.",
-};
+export const metadata = {
+  title: 'EMS Express Studio Znojmo | 20minutový efektivní trénink',
+  description: 'Zpevněte tělo, zhubněte a zbavte se bolesti zad za pouhých 20 minut týdně. Moderní EMS cvičení ve Znojmě s osobním trenérem.',
+  keywords: 'EMS Znojmo, EMS cvičení, hubnutí Znojmo, fitness pro lidi s bolestí zad, osobní trenér Znojmo',
+}
 
 export default function RootLayout({
   children,
