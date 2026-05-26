@@ -7,35 +7,27 @@ export default function ContactPage() {
   const trainers = [
     {
       id: 1,
-      name: "Bc. Jan Novák",
-      role: "Hlavní trenér a zakladatel",
-      specialization: "Odstranění bolestí zad, diagnostika těla",
-      credo: "EMS mě fascinuje tím, jak dokáže za 20 minut zacílit hluboké svaly, které lidé v kanclíku jinak neprobudí. Zakládám si na precizní technice.",
-      image: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?q=80&w=600&auto=format&fit=crop" // Sem pak dáš reálnou fotku
+      name: "Mgr. David Křivan",
+      role: "Certifikovaný trenér",
+      specialization: "Ve vývoji",
+      credo: "Ve vývoji",
+      image: "" // Sem pak dáš reálnou fotku
     },
     {
       id: 2,
-      name: "Mgr. Petra Štěpánková",
+      name: "Ing. Monika Dufková",
       role: "Certifikovaná EMS trenérka",
-      specialization: "Poporodní regenerace, tvarování postavy",
-      credo: "Pomáhám maminkám získat zpět jistotu, pevné břicho a energii. Vím, jak vzácný je váš čas, proto z každé minuty vymáčkneme maximum.",
-      image: "https://images.unsplash.com/photo-1548690312-e3b507d8c110?q=80&w=600&auto=format&fit=crop" // Sem pak dáš reálnou fotku
+      specialization: "Ve vývoji",
+      credo: "Ve vývoji",
+      image: "" // Sem pak dáš reálnou fotku
     },
     {
       id: 3,
-      name: "Tomáš Dvořák",
-      role: "Kondiční EMS trenér",
-      specialization: "Redukce tuku, silová dynamika",
-      credo: "EMS není nuda. Na mých trénincích sice makáme tvrdě, ale vždycky s úsměvem. Zničím vaše mýty o tom, že cvičení musí bolet hodiny.",
-      image: "https://images.unsplash.com/photo-1567013127542-490d757e51fc?q=80&w=600&auto=format&fit=crop" // Sem pak dáš reálnou fotku
-    },
-    {
-      id: 4,
-      name: "Lucie Malá",
-      role: "Nutriční poradce & EMS instruktorka",
-      specialization: "Zdravý životní styl, zpevnění pánevního dna",
-      credo: "Spojení správné výživy a elektro-myo-stimulace je jako zkratka k výsledkům. Ukážu vám, že zdravé tělo začíná v hlavě a správném impulzu.",
-      image: "https://images.unsplash.com/photo-1517841905240-472988babdf9?q=80&w=600&auto=format&fit=crop" // Sem pak dáš reálnou fotku
+      name: "Mgr. Pavel Dufek",
+      role: "Certifikovaný EMS trenér",
+      specialization: "Ve vývoji",
+      credo: "Ve vývoji",
+      image: "" 
     },
   ];
 
