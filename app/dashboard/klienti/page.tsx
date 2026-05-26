@@ -115,7 +115,11 @@ export default function TrainerDashboardPage() {
 
       const { data: allReservations } = await supabase
         .from('reservations')
-        .select('user_id, status, profiles:user_id(first_name, last_name, birth_date)');
+        .select('date, user_id, status, profiles:user_id(first_name, last_name, birth_date)');
+
+      // Získání dnešního ISO data pro porovnání proběhlých tréninků
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
       const statsMap: { [key: string]: any } = {};
       allReservations?.forEach((res: any) => {
@@ -131,7 +135,9 @@ export default function TrainerDashboardPage() {
             completed_trainings: 0
           };
         }
-        if (res.status === 'CONFIRMED') {
+        
+        // Započítat pouze pokud je trénink potvrzený A už proběhl (jeho datum je menší než dnešní)
+        if (res.status === 'CONFIRMED' && res.date && res.date < todayStr) {
           statsMap[res.user_id].completed_trainings += 1;
         }
       });
@@ -212,7 +218,6 @@ export default function TrainerDashboardPage() {
   };
 
   const { upcomingTrainings, pastTrainings } = useMemo(() => {
-    // Pro bezpečné porovnání získáme dnešní lokální ISO řetězec
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     
@@ -344,7 +349,7 @@ export default function TrainerDashboardPage() {
                         const isMine = !!slot.myBooking;
                         const isFree = !!slot.freeBooking;
 
-                        let bgClass = 'bg-gray-100 hover:bg-gray-200/70'; // Výchozí stav (Volno)
+                        let bgClass = 'bg-gray-100 hover:bg-gray-200/70';
                         if (isMine) bgClass = 'bg-emerald-500 border-emerald-600/20 shadow-inner';
                         if (isFree) bgClass = 'bg-orange-400 border-orange-500/20 shadow-inner';
 
@@ -356,7 +361,6 @@ export default function TrainerDashboardPage() {
                               isMine ? 'Váš trénink' : isFree ? 'Lekce čeká na trenéra' : 'Volno'
                             }`}
                           >
-                            {/* Jemná tečka značící celou hodinu */}
                             <span className="text-[8px] font-medium opacity-20">
                               {slot.time.split(':')[1] === '00' ? '•' : ''}
                             </span>

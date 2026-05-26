@@ -12,7 +12,7 @@ export default function HomePage() {
         
         <div className="relative z-10 text-center max-w-4xl mx-auto space-y-8">
           <span className="inline-flex items-center rounded-full bg-[#73C2BE]/10 px-4 py-1.5 text-xs font-bold text-[#1E388C] ring-1 ring-inset ring-[#73C2BE]/40 tracking-wide uppercase">
-            ⚡ První zkušební trénink s 50% slevou
+            ⚡ Nejlepší cvičení pro zpevnění celého těla
           </span>
           
           <h1 className="text-4xl font-black tracking-tight text-[#1E388C] sm:text-6xl lg:text-7xl leading-[1.1]">
@@ -106,10 +106,10 @@ export default function HomePage() {
           {/* Klasická světlá karta */}
           <div className="rounded-2xl border border-slate-200/80 p-8 shadow-sm space-y-6 bg-white flex flex-col justify-between hover:border-slate-300 transition-all hover:shadow-md">
             <div className="space-y-4">
-              <span className="text-xs font-bold text-[#2986BF] uppercase tracking-wider block">Jednorázový start</span>
-              <h3 className="text-xl font-extrabold text-[#1E388C] uppercase">Zkušební trénink</h3>
+              <span className="text-xs font-bold text-[#2986BF] uppercase tracking-wider block">Jednorázový trénink</span>
+              <h3 className="text-xl font-extrabold text-[#1E388C] uppercase">1 vstup</h3>
               <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-black text-slate-900">290</span>
+                <span className="text-4xl font-black text-slate-900">750</span>
                 <span className="text-lg font-bold text-slate-500">Kč</span>
               </div>
               <p className="text-sm text-slate-500 leading-relaxed">
@@ -127,9 +127,9 @@ export default function HomePage() {
               <span className="text-xs font-bold text-[#73C2BE] bg-[#73C2BE]/10 px-2 py-0.5 rounded-md uppercase tracking-wider inline-block">Aktivní proměna</span>
               <h3 className="text-xl font-extrabold text-[#1E388C] uppercase">Permanentka 10 vstupů</h3>
               <div className="flex items-baseline gap-1">
-                <span className="text-4xl font-black text-[#1E388C]">4 900</span>
+                <span className="text-4xl font-black text-[#1E388C]">6 500</span>
                 <span className="text-lg font-bold text-[#1E388C]">Kč</span>
-                <span className="text-xs text-slate-400 font-medium ml-2">(490 Kč / lekce)</span>
+                <span className="text-xs text-slate-400 font-medium ml-2">(650 Kč / lekce)</span>
               </div>
               <p className="text-sm text-slate-600 leading-relaxed font-medium">
                 Kompletní péče trenéra na každé lekci, zapůjčení veškerého čistého vybavení v ceně. Platnost permanentky je plných 6 měsíců.

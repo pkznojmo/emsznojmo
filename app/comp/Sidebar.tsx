@@ -57,8 +57,10 @@ export default function Sidebar({ onLogout }: SidebarProps) {
 
   return (
     <>
-      {/* --- RESPONSIVNÍ BAR (Pevný vlevo na PC, na mobilu jako lišta pod vlnou [top-20]) --- */}
-      <aside className="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-4 md:p-6 flex md:flex-col justify-between shrink-0 sticky top-20 md:top-0 md:h-screen z-50">
+      {/* --- RESPONSIVNÍ BAR --- 
+          Mobil si drží `z-[51]`, pro PC přidáno `md:z-30`, aby sidebar zalézal pod Topbar.tsx 
+      */}
+      <aside className="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-gray-200 p-4 md:p-6 flex md:flex-col justify-between shrink-0 sticky top-20 md:top-24 md:h-[calc(100vh-6rem)] z-[51] md:z-30 overflow-y-auto">
         
         {/* Vnitřek pro PC / Horní řádek pro mobil */}
         <div className="w-full flex md:flex-col justify-between md:justify-start items-center md:items-stretch">
@@ -67,16 +69,14 @@ export default function Sidebar({ onLogout }: SidebarProps) {
           <Link 
             href="/" 
             onClick={() => setIsMobileMenuOpen(false)} 
-            className="text-xl md:text-2xl font-bold text-emerald-600 flex items-center gap-2 select-none"
-          >
-            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 md:p-2 rounded-lg text-sm md:text-lg font-extrabold">EMS</span>
-            Studio
+            className="text-xl md:text-2xl font-bold text-emerald-600 flex items-center gap-2 select-none">
+            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 md:p-2 rounded-lg text-sm md:text-lg font-extrabold">Klientská zóna</span>
           </Link>
 
           {/* Hamburger tlačítko (zobrazeno pouze na mobilu) */}
           <button 
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="md:hidden p-2 text-gray-600 hover:text-emerald-600 transition-colors z-50 relative"
+            className="md:hidden p-2 text-gray-600 hover:text-emerald-600 transition-colors z-[52] relative"
             aria-label="Toggle menu"
           >
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -127,7 +127,7 @@ export default function Sidebar({ onLogout }: SidebarProps) {
         </div>
 
         {/* Odhlášení pro PC (skryté na mobilu) */}
-        <div className="hidden md:block w-full">
+        <div className="hidden md:block w-full mt-8 md:mt-auto">
           <button 
             onClick={onLogout} 
             className="w-full flex items-center justify-center gap-2 px-4 py-3 border border-red-100 text-red-600 hover:bg-red-50 font-bold rounded-xl transition"
