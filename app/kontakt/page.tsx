@@ -3,7 +3,6 @@ import { ArrowLeft, Phone, Mail, MapPin, Clock, Calendar, ShieldCheck, Award, He
 
 export default function ContactPage() {
   
-  // Data pro 4 trenéry - připraveno pro snadné napojení fotek a textů
   const trainers = [
     {
       id: 1,
@@ -11,7 +10,7 @@ export default function ContactPage() {
       role: "Certifikovaný trenér",
       specialization: "Ve vývoji",
       credo: "Ve vývoji",
-      image: "" // Sem pak dáš reálnou fotku
+      image: "https://emsznojmo.cz/logo.svg"
     },
     {
       id: 2,
@@ -19,7 +18,7 @@ export default function ContactPage() {
       role: "Certifikovaná EMS trenérka",
       specialization: "Ve vývoji",
       credo: "Ve vývoji",
-      image: "" // Sem pak dáš reálnou fotku
+      image: "https://emsznojmo.cz/logo.svg"
     },
     {
       id: 3,
@@ -27,7 +26,7 @@ export default function ContactPage() {
       role: "Certifikovaný EMS trenér",
       specialization: "Ve vývoji",
       credo: "Ve vývoji",
-      image: "" 
+      image: "https://emsznojmo.cz/logo.svg" 
     },
   ];
 
@@ -67,7 +66,7 @@ export default function ContactPage() {
           </div>
 
           {/* Mřížka se 4 trenéry */}
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4 items-stretch">
+          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3 items-stretch">
             {trainers.map((trainer) => (
               <div 
                 key={trainer.id} 
@@ -183,20 +182,16 @@ export default function ContactPage() {
             </div>
             
             <p className="text-xs text-slate-500 leading-relaxed">
-              Tréninky probíhají **výhradně na základě předchozí online nebo telefonické rezervace**, abychom pro vás garantovali přítomnost osobního trenéra a prázdné studio jen pro vás.
+              Tréninky probíhají výhradně na základě předchozí online nebo telefonické rezervace, abychom pro vás garantovali přítomnost osobního trenéra a prázdné studio jen pro vás.
             </p>
 
             <div className="space-y-2 text-sm text-slate-700">
               <div className="flex justify-between py-1.5 border-b border-slate-100">
-                <span className="font-medium">Pondělí - Pátek</span>
-                <span className="font-bold text-[#1E388C]">07:00 - 20:00</span>
-              </div>
-              <div className="flex justify-between py-1.5 border-b border-slate-100">
-                <span className="font-medium">Sobota</span>
-                <span className="font-bold text-slate-600">08:00 - 14:00</span>
+                <span className="font-medium">Pondělí - Neděle</span>
+                <span className="font-bold text-[#1E388C]">06:00 - 19:00</span>
               </div>
               <div className="flex justify-between py-1.5 text-slate-400">
-                <span>Neděle & Svátky</span>
+                <span>Svátky</span>
                 <span className="italic text-xs font-semibold uppercase tracking-wider bg-slate-50 px-2 py-0.5 rounded">Zavřeno</span>
               </div>
             </div>
