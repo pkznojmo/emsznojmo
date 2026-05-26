@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next'
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = 'https://tvoje-domena.cz' // Změň za svou reálnou doménu
+  const baseUrl = 'https://emsznojmo.cz' // Změň za svou reálnou doménu
 
   // Seznam veřejných cest, které chceš indexovat
   const routes = [
