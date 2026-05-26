@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '../../comp/Sidebar';
-import { Calendar as CalendarIcon, Info } from 'lucide-react';
+import { Calendar as CalendarIcon, Info, StepBack, StepForward } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 
@@ -11,7 +11,7 @@ const DAYS_NAMES: { [key: number]: string } = {
   1: 'Pondělí', 2: 'Úterý', 3: 'Středa', 4: 'Čtvrtek', 5: 'Pátek', 6: 'Sobota', 0: 'Neděle'
 };
 
-// Generátor 26 časových slotů (06:00 až 18:30 -> pokrývá čas do 19:00)
+// Generátor 26 časových slots (06:00 až 18:30 -> pokrývá čas do 19:00)
 const GENERATED_SLOTS = (() => {
   const slots = [];
   for (let hour = 6; hour <= 18; hour++) {
@@ -22,18 +22,41 @@ const GENERATED_SLOTS = (() => {
   return slots;
 })();
 
-// Dynamický generátor 7 nadcházejících dní (Dnes + 6 dní)
-const getNextSevenDays = () => {
+// Pomocná funkce pro získání pondělí až neděle na základě offsetu týdnů
+const getWeekDays = (weekOffset = 0) => {
   const days = [];
   const options: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'numeric' };
+  
+  const today = new Date();
+  
+  // BEZPEČNÉ ZÍSKÁNÍ LOKÁLNÍHO DATUMU (YYYY-MM-DD) bez posunu časového pásma
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  const todayISO = `${yyyy}-${mm}-${dd}`;
+  
+  // Zjistíme pondělí aktuálního týdne (v JS: 0 = neděle, 1 = pondělí...)
+  const currentDay = today.getDay();
+  const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+  
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  monday.setDate(monday.getDate() + distanceToMonday + (weekOffset * 7));
+
   for (let i = 0; i < 7; i++) {
-    const d = new Date();
+    const d = new Date(monday.getTime());
     d.setDate(d.getDate() + i);
+    
+    // Generování ISO stringu pro dny v cyklu bez posunu časového pásma
+    const dY = d.getFullYear();
+    const dM = String(d.getMonth() + 1).padStart(2, '0');
+    const dD = String(d.getDate()).padStart(2, '0');
+    const isoString = `${dY}-${dM}-${dD}`;
+    
     days.push({
-      isoString: d.toISOString().split('T')[0],
+      isoString,
       formatted: d.toLocaleDateString('cs-CZ', options),
       dayOfWeek: d.getDay(),
-      isToday: i === 0
+      isToday: isoString === todayISO
     });
   }
   return days;
@@ -43,13 +66,14 @@ export default function WeeklySchedulePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = tento týden, 1 = příští, -1 = minulý...
 
   // Stavy pro data z DB
   const [regularHours, setRegularHours] = useState<any[]>([]);
   const [exceptions, setExceptions] = useState<any[]>([]);
 
-  // Pole 7 dní vygenerované jednou při načtení
-  const upcomingSevenDays = useMemo(() => getNextSevenDays(), []);
+  // Pole 7 dní od pondělí do neděle pro zvolený týden
+  const currentWeekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
 
   const fetchData = async (id: string) => {
     const { data: reg } = await supabase.from('trainer_availability').select('*').eq('trainer_id', id);
@@ -114,7 +138,7 @@ export default function WeeklySchedulePage() {
 
   // Výpočet výsledné matice (Zrcadlení šablony + aplikace výjimek)
   const calculatedDaysMatrix = useMemo(() => {
-    return upcomingSevenDays.map(day => {
+    return currentWeekDays.map(day => {
       const slots = GENERATED_SLOTS.map(slot => {
         const dayException = exceptions.find(e => e.date === day.isoString && slot >= e.start_time && slot < e.end_time);
         
@@ -134,7 +158,7 @@ export default function WeeklySchedulePage() {
 
       return { ...day, slots };
     });
-  }, [upcomingSevenDays, regularHours, exceptions]);
+  }, [currentWeekDays, regularHours, exceptions]);
 
   if (loading) {
     return (
@@ -149,36 +173,47 @@ export default function WeeklySchedulePage() {
       <Sidebar onLogout={async () => { await supabase.auth.signOut(); router.push('/prihlaseni'); }} />
 
       <main className="flex-1 p-6 md:p-10 max-w-7xl space-y-8 overflow-x-hidden">
-        <header>
-          <h1 className="text-3xl font-bold text-gray-900">Operativní plán (Tento týden) 📅</h1>
-          <p className="text-gray-500 mt-1">
-            Upravuj časy pro konkrétní dny. Změny zde nepřepíšou dlouhodobou šablonu, platí jen pro dané datum.
-          </p>
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Operativní plán 📅</h1>
+            <p className="text-gray-500 mt-1">
+              Upravuj časy pro konkrétní dny. Změny zde nepřepíšou dlouhodobou šablonu, platí jen pro dané datum.
+            </p>
+          </div>
+
+          {/* Přepínač týdnů */}
+          <div className="flex bg-white rounded-xl shadow-sm border border-gray-200 p-1 select-none items-center self-start md:self-auto">
+            <button 
+              onClick={() => setWeekOffset(prev => prev - 1)} 
+              className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-indigo-600"
+              title="Předchozí týden"
+            >
+              <StepBack size={18}/>
+            </button>
+            <div className="px-4 py-1.5 font-bold text-sm flex items-center min-w-[120px] justify-center text-gray-700">
+              {weekOffset === 0 ? 'Tento týden' : `${weekOffset > 0 ? '+' : ''}${weekOffset} týd`}
+            </div>
+            <button 
+              onClick={() => setWeekOffset(prev => prev + 1)} 
+              className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-indigo-600"
+              title="Další týden"
+            >
+              <StepForward size={18}/>
+            </button>
+          </div>
         </header>
 
         <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
-          {/* Informační nápověda */}
-          <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl flex items-start gap-3 text-sm text-indigo-900">
-            <Info size={20} className="shrink-0 mt-0.5 text-indigo-600" />
-            <div>
-              <span className="font-bold">Jak klikat výjimky:</span> 
-              <ul className="list-disc list-inside mt-1 space-y-0.5 opacity-90">
-                <li>Kliknutím na <span className="text-emerald-600 font-bold">zelený slot</span> zrušíš tréninky v tento den (zčervená).</li>
-                <li>Kliknutím na <span className="text-gray-500 font-bold">šedý slot</span> přidáš mimořádnou pracovní dobu navíc (zmodrá).</li>
-                <li>Opětovným kliknutím na jakoukoliv výjimku (červenou/modrou) ji vymažeš a vrátíš čas do stavu podle šablony.</li>
-              </ul>
-            </div>
-          </div>
 
           {/* Legenda barev */}
           <div className="flex flex-wrap gap-4 text-xs font-bold text-gray-500 px-1">
-            <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-emerald-500" /> Běžná práce (Ze šablony)</div>
-            <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-blue-500" /> Mimořádná práce navíc (Výjimka)</div>
-            <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-red-500" /> Mimořádné volno / Zrušeno (Výjimka)</div>
-            <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-gray-100 border border-gray-200" /> Standardní volno</div>
+            <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-emerald-500" /> Běžná práce</div>
+            <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-blue-500" /> Práce navíc</div>
+            <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-red-500" /> Zrušená práce</div>
+            <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-gray-100 border border-gray-200" /> Volno</div>
           </div>
 
-          {/* Časová osa na 7 dní */}
+          {/* Časová osa na týden */}
           <div className="overflow-x-auto min-w-full pt-2">
             <div className="inline-block min-w-[950px] w-full">
               
@@ -194,7 +229,7 @@ export default function WeeklySchedulePage() {
                 </div>
               </div>
 
-              {/* 7 řádků (Dnes až +6 dní) */}
+              {/* 7 řádků (Pondělí až Neděle) */}
               <div className="space-y-2.5">
                 {calculatedDaysMatrix.map(day => (
                   <div key={day.isoString} className="flex items-center group">
@@ -202,7 +237,7 @@ export default function WeeklySchedulePage() {
                     {/* Levý sloupec s reálným datem */}
                     <div className="w-36 shrink-0 text-sm flex flex-col justify-center leading-tight">
                       <span className="font-extrabold text-gray-800">{day.formatted}</span>
-                      <span className="text-[10px] text-indigo-500 font-bold uppercase tracking-wider">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${day.isToday ? 'text-indigo-600' : 'text-gray-400'}`}>
                         {day.isToday ? 'Dnes' : DAYS_NAMES[day.dayOfWeek]}
                       </span>
                     </div>

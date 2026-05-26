@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function RegisterPage() {
@@ -9,6 +9,11 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
+  
+  // Nové stavy pro vylepšené UI
+  const [showPassword, setShowPassword] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -20,10 +25,29 @@ export default function RegisterPage() {
     address: '',
     clothingSize: 'M',
     goals: '',
+    customer_note: '',
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+
+  // Zavření dropdownu při kliknutí mimo něj
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSizeSelect = (size: string) => {
+    setFormData({ ...formData, clothingSize: size });
+    setIsDropdownOpen(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,7 +77,7 @@ export default function RegisterPage() {
     }
   };
 
-  // 1. Stav po úspěšné registraci (Čekání na potvrzení e-mailu)
+  // 1. Stav po úspěšné registraci
   if (isSubmitted) {
     return (
       <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center p-6">
@@ -70,7 +94,7 @@ export default function RegisterPage() {
           <div className="pt-2">
             <button
               onClick={() => router.push('/prihlaseni')}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-3 rounded-xl transition duration-200"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition duration-200 shadow-md"
             >
               Přejít na přihlášení
             </button>
@@ -122,7 +146,7 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          {/* Email a Heslo */}
+          {/* Email a Heslo (se zobrazením hesla) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-semibold mb-2 text-gray-700">E-mail *</label>
@@ -138,16 +162,36 @@ export default function RegisterPage() {
             </div>
             <div>
               <label className="block text-sm font-semibold mb-2 text-gray-700">Heslo *</label>
-              <input
-                type="password"
-                name="password"
-                required
-                minLength={6}
-                value={formData.password}
-                onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
-                placeholder="•••••••• (min. 6 znaků)"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  required
+                  minLength={6}
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-4 pr-12 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition"
+                >
+                  {showPassword ? (
+                    // Ikonka skrytého oka
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 1-4.243-4.243m4.242 4.242L9.88 9.88" />
+                    </svg>
+                  ) : (
+                    // Ikonka oka
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.645C3.304 7.521 7.244 4.5 12 4.5c4.756 0 8.773 3.162 10.065 7.498a1.012 1.012 0 0 1 0 .645C20.696 16.479 16.756 19.5 12 19.5c-4.756 0-8.773-3.162-10.065-7.498z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -177,7 +221,7 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          {/* Adresa a Velikost Oblečení */}
+          {/* Adresa a Custom Velikost Oblečení Dropdown */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold mb-2 text-gray-700">Adresa trvalého bydliště</label>
@@ -190,22 +234,59 @@ export default function RegisterPage() {
                 placeholder="Ulice 123, Znojmo"
               />
             </div>
-            <div>
+            {/* Custom Dropdown */}
+            <div className="relative" ref={dropdownRef}>
               <label className="block text-sm font-semibold mb-2 text-gray-700">Velikost EMS</label>
-              <select
-                name="clothingSize"
-                value={formData.clothingSize}
-                onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+              <button
+                type="button"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 flex items-center justify-between focus:outline-none focus:border-emerald-500 focus:bg-white transition text-left"
               >
-                <option value="XS">XS</option>
-                <option value="S">S</option>
-                <option value="M">M</option>
-                <option value="L">L</option>
-                <option value="XL">XL</option>
-                <option value="XXL">XXL</option>
-              </select>
+                <span>{formData.clothingSize}</span>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                  className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                </svg>
+              </button>
+
+              {isDropdownOpen && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto focus:outline-none py-1">
+                  {sizes.map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => handleSizeSelect(size)}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                        formData.clothingSize === size
+                          ? 'bg-emerald-50 text-emerald-600 font-semibold'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+          </div>
+
+          {/* Poznámky */}
+          <div>
+            <label className="block text-sm font-semibold mb-2 text-gray-700">Poznámky</label>
+            <textarea
+              name="customer_note"
+              rows={3}
+              value={formData.customer_note}
+              onChange={handleChange}
+              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition resize-none"
+              placeholder="Např. jsem diabetik"
+            />
           </div>
 
           {/* Fitness Cíle */}
@@ -222,13 +303,27 @@ export default function RegisterPage() {
           </div>
 
           {/* Tlačítko */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition duration-200 shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {loading ? 'Zpracovávám registraci...' : 'Dokončit registraci'}
-          </button>
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition duration-200 shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? 'Zpracovávám registraci...' : 'Dokončit registraci'}
+            </button>
+          </div>
+
+          {/* Odkaz na Přihlášení pro stávající uživatele */}
+          <p className="text-center text-sm text-gray-500 mt-4">
+            Už máš účet?{' '}
+            <button
+              type="button"
+              onClick={() => router.push('/prihlaseni')}
+              className="text-emerald-600 font-semibold hover:text-emerald-700 hover:underline transition focus:outline-none"
+            >
+              Přihlas se
+            </button>
+          </p>
         </form>
       </div>
     </div>

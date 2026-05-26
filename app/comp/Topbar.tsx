@@ -13,20 +13,28 @@ export default function Topbar() {
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  // Stavy pro přihlášeného uživatele
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<{ first_name: string; last_name: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isMobileMenuOpen]);
+
+  useEffect(() => {
     const getAuthSession = async () => {
-      // 1. Zjistíme aktivní session uživatele
       const { data: { user: authUser } } = await supabase.auth.getUser();
       
       if (authUser) {
         setUser(authUser);
         
-        // 2. Vytáhneme jméno a příjmení z tabulky profiles
         const { data: profileData } = await supabase
           .from('profiles')
           .select('first_name, last_name')
@@ -45,7 +53,6 @@ export default function Topbar() {
 
     getAuthSession();
 
-    // Sledování změn stavu (přihlášení/odhlášení) v reálném čase
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
@@ -81,7 +88,6 @@ export default function Topbar() {
           </div>
 
           <div className="flex items-center gap-6">
-            {/* BEZPEČNÉ SVG IKONY */}
             <div className="flex gap-4 items-center mr-2">
               {/* Facebook */}
               <a href="https://facebook.com" target="_blank" rel="noreferrer" className="hover:text-blue-200 transition-colors" aria-label="Facebook">
@@ -99,10 +105,8 @@ export default function Topbar() {
 
             <div className="flex items-center gap-2 sm:gap-4 border-l border-white/20 pl-4 sm:pl-6 min-h-[28px]">
               {loading ? (
-                // Načítací indikátor, aby bar neproblikával
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : user ? (
-                // DYNAMICKÝ STAV: Přihlášený uživatel
                 <div className="flex items-center gap-3">
                   <span className="text-emerald-300 normal-case hidden sm:inline">
                     {profile?.first_name} {profile?.last_name}
@@ -115,7 +119,6 @@ export default function Topbar() {
                   </Link>
                 </div>
               ) : (
-                // DYNAMICKÝ STAV: Nepřihlášený uživatel
                 <Link 
                   href="/prihlaseni" 
                   className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1 rounded-sm shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
@@ -129,8 +132,8 @@ export default function Topbar() {
       </div>
 
       {/* --- ŠEDÝ NAVBAR S VLNOU --- */}
-      <nav className="sticky top-0 z-50 shadow-sm bg-[#DDDDDD]">
-        <div className="px-6 relative z-10 h-20 md:h-24 flex items-center">
+      <nav className="sticky top-0 z-[50] shadow-sm bg-[#DDDDDD] h-20 md:h-24">
+        <div className="px-6 relative z-50 h-full flex items-center">
           <div className="max-w-7xl mx-auto w-full flex justify-between items-center">
             
             <Link href="/" className="flex items-center shrink-0">
@@ -162,7 +165,7 @@ export default function Topbar() {
             </ul>
 
             {/* Hamburger pro mobil */}
-            <button className="md:hidden p-2 text-[#2563eb]" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+            <button className="md:hidden p-2 text-[#2563eb] transition-transform active:scale-95 z-50" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
               {isMobileMenuOpen ? <X size={28} /> : <Menu size={28} />}
             </button>
           </div>
@@ -184,33 +187,46 @@ export default function Topbar() {
         </div>
       </nav>
 
-      {/* --- MOBILNÍ MENU --- */}
+      {/* --- MODERNÍ CELOOBRAZOVKOVÉ MOBILNÍ MENU S BLUREM --- */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-x-0 top-20 md:hidden bg-white border-b border-slate-200 p-6 flex flex-col gap-4 font-bold uppercase text-sm shadow-lg z-[100]">
-          {publicLinks.map(link => (
-            <Link key={link.href} href={link.href} onClick={() => setIsMobileMenuOpen(false)} className="text-slate-700 hover:text-[#2563eb]">
-              {link.label}
-            </Link>
-          ))}
-          <hr className="border-slate-200" />
+        <div className="fixed inset-x-0 bottom-0 top-20 md:hidden bg-white/94 backdrop-blur-md flex flex-col justify-start pt-12 px-8 gap-6 font-bold uppercase text-lg z-40 animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="flex flex-col gap-5 text-center mt-4">
+            {publicLinks.map(link => (
+              <Link 
+                key={link.href} 
+                href={link.href} 
+                onClick={() => setIsMobileMenuOpen(false)} 
+                className={cn(
+                  "py-2.5 transition-colors active:text-[#2563eb] rounded-xl tracking-wide",
+                  pathname === link.href ? 'text-[#2563eb] bg-[#2563eb]/5' : 'text-slate-800'
+                )}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </div>
+
+          <hr className="border-slate-200/80 my-2" />
           
-          {user ? (
-            <Link 
-              href="/dashboard" 
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="text-emerald-600 flex items-center gap-2"
-            >
-              <LayoutDashboard size={16} /> Klientská zóna ({profile?.first_name})
-            </Link>
-          ) : (
-            <Link 
-              href="/prihlaseni" 
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="text-orange-600 flex items-center gap-2"
-            >
-              <LogIn size={16} /> Přihlásit se
-            </Link>
-          )}
+          <div className="flex flex-col items-center justify-center">
+            {user ? (
+              <Link 
+                href="/dashboard" 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="w-full max-w-sm text-center bg-emerald-500 text-white py-3.5 px-6 rounded-xl flex items-center justify-center gap-2.5 shadow-md shadow-emerald-100 active:scale-98 transition-transform"
+              >
+                <LayoutDashboard size={18} /> Klientská zóna ({profile?.first_name})
+              </Link>
+            ) : (
+              <Link 
+                href="/prihlaseni" 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="w-full max-w-sm text-center bg-orange-500 text-white py-3.5 px-6 rounded-xl flex items-center justify-center gap-2.5 shadow-md shadow-orange-100 active:scale-98 transition-transform"
+              >
+                <LogIn size={18} /> Přihlásit se
+              </Link>
+            )}
+          </div>
         </div>
       )}
     </>

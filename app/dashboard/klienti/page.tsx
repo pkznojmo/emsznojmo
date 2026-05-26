@@ -3,13 +3,35 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '../../comp/Sidebar';
-import { Users, Calendar } from 'lucide-react';
+import { StepForward, StepBack, Clock, UserPlus, History, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 const DAYS_NAMES: { [key: number]: string } = {
   1: 'Pondělí', 2: 'Úterý', 3: 'Středa', 4: 'Čtvrtek', 5: 'Pátek', 6: 'Sobota', 0: 'Neděle'
 };
 
+// Pomocná funkce pro převod YYYY-MM-DD na hezké české datum "D.M." (bez roku a mezer)
+const formatCzechDate = (dateString: string | null) => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return dateString;
+  return date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' }).replace(/\s+/g, '');
+};
+
+// Pomocná funkce na výpočet věku z birth_date
+const calculateAge = (birthDateString: string | null) => {
+  if (!birthDateString) return null;
+  const birthDate = new Date(birthDateString);
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+};
+
+// Generátor 26 časových slotů (06:00 až 18:30 -> pokrývá čas do 19:00)
 const GENERATED_SLOTS = (() => {
   const slots = [];
   for (let hour = 6; hour <= 18; hour++) {
@@ -20,178 +42,278 @@ const GENERATED_SLOTS = (() => {
   return slots;
 })();
 
-const getNextSevenDays = () => {
+// Bezpečná funkce pro získání pondělí až neděle na základě offsetu týdnů (bez posunu časového pásma)
+const getWeekDays = (weekOffset = 0) => {
   const days = [];
   const options: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'numeric' };
+  
+  const today = new Date();
+  
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  const todayISO = `${yyyy}-${mm}-${dd}`;
+  
+  const currentDay = today.getDay();
+  const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+  
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  monday.setDate(monday.getDate() + distanceToMonday + (weekOffset * 7));
+
   for (let i = 0; i < 7; i++) {
-    const d = new Date();
+    const d = new Date(monday.getTime());
     d.setDate(d.getDate() + i);
+    
+    const dY = d.getFullYear();
+    const dM = String(d.getMonth() + 1).padStart(2, '0');
+    const dD = String(d.getDate()).padStart(2, '0');
+    const isoString = `${dY}-${dM}-${dD}`;
+    
     days.push({
-      isoString: d.toISOString().split('T')[0],
+      isoString,
       formatted: d.toLocaleDateString('cs-CZ', options),
       dayOfWeek: d.getDay(),
-      isToday: i === 0
+      isToday: isoString === todayISO
     });
   }
   return days;
 };
 
-export default function ClientBookingsPage() {
+export default function TrainerDashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-
-  // Data z DB
+  const [trainerProfile, setTrainerProfile] = useState<any>(null);
+  
+  // Stavy pro data
   const [bookings, setBookings] = useState<any[]>([]);
-  const [upcomingTrainings, setUpcomingTrainings] = useState<any[]>([]);
+  const [unassignedBookings, setUnassignedBookings] = useState<any[]>([]);
+  const [allTrainers, setAllTrainers] = useState<any[]>([]);
+  const [globalClientsStats, setGlobalClientsStats] = useState<{ [key: string]: any }>({});
+  const [weekOffset, setWeekOffset] = useState(0);
 
-  const upcomingSevenDays = useMemo(() => getNextSevenDays(), []);
+  // Pole 7 dní od pondělí do neděle pro zvolený týden
+  const currentWeekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
 
-  const fetchData = async (trainerFullName: string) => {
-    // Získání dnešního datumu bezpečně podle lokálního času (ne UTC)
-    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
-    const localISODate = (new Date(Date.now() - tzOffset)).toISOString().split('T')[0];
+  // Seznam všech trenérů do textového řetězce
+  const trainersListString = useMemo(() => {
+    if (allTrainers.length === 0) return 'Monika Dufková, David Křivan';
+    return allTrainers
+      .map(t => `${t.first_name || ''} ${t.last_name || ''}`.trim())
+      .filter(Boolean)
+      .join(', ');
+  }, [allTrainers]);
 
-    // 1. Načtení rezervací pro 7denní osu (Funguje ti správně)
-    const { data: bks } = await supabase
-      .from('reservations')
-      .select('id, date, time, user_id, status')
-      .eq('trainer', trainerFullName)
-      .eq('status', 'CONFIRMED')
-      .gte('date', upcomingSevenDays[0].isoString)
-      .lte('date', upcomingSevenDays[6].isoString);
-
-    // 2. ✅ UPRAVENO: Zjednodušené načítání 10 nejbližších tréninků
-    // Nejdřív vytáhneme čisté rezervace od dnešního dne dál
-    const { data: upcoming, error: upcomingError } = await supabase
-      .from('reservations')
-      .select('id, date, time, user_id, status')
-      .eq('trainer', trainerFullName)
-      .eq('status', 'CONFIRMED')
-      .gte('date', localISODate) // Použijeme bezpečné lokální datum
-      .order('date', { ascending: true })
-      .order('time', { ascending: true })
-      .limit(10);
-
-    if (upcomingError) {
-      console.error("Chyba při načítání rezervací:", upcomingError);
-    }
-
-    // Pokud máme rezervace, dotáhneme k nim profily ručně a spolehlivě bez složitých JOINů v jednom selectu
-    if (upcoming && upcoming.length > 0) {
-      const userIds = upcoming.map(r => r.user_id);
-      
-      // Načteme profily pro všechny uživatele, co mají trénink
-      const { data: clientProfiles } = await supabase
+  const fetchData = async (profile: any) => {
+    setLoading(true);
+    try {
+      const { data: trainersData } = await supabase
         .from('profiles')
-        .select('id, full_name, age, completed_trainings')
-        .in('id', userIds);
+        .select('first_name, last_name')
+        .eq('role', 'TRAINER');
+      
+      if (trainersData) setAllTrainers(trainersData);
 
-      // Spojíme data dohromady do jednoho objektu
-      const enrichedTrainings = upcoming.map(res => {
-        const profile = clientProfiles?.find(p => p.id === res.user_id);
-        return {
-          ...res,
-          profiles: profile || { full_name: 'Neznámý klient', age: null, completed_trainings: 0 }
-        };
+      const { data: allReservations } = await supabase
+        .from('reservations')
+        .select('user_id, status, profiles:user_id(first_name, last_name, birth_date)');
+
+      const statsMap: { [key: string]: any } = {};
+      allReservations?.forEach((res: any) => {
+        if (!res.user_id) return;
+        if (!statsMap[res.user_id]) {
+          const clientName = res.profiles?.first_name || res.profiles?.last_name
+            ? `${res.profiles.first_name || ''} ${res.profiles.last_name || ''}`.trim()
+            : 'Nový klient';
+          
+          statsMap[res.user_id] = {
+            full_name: clientName,
+            age: calculateAge(res.profiles?.birth_date),
+            completed_trainings: 0
+          };
+        }
+        if (res.status === 'CONFIRMED') {
+          statsMap[res.user_id].completed_trainings += 1;
+        }
       });
+      setGlobalClientsStats(statsMap);
 
-      setUpcomingTrainings(enrichedTrainings);
-    } else {
-      setUpcomingTrainings([]);
+      const { data: myBks, error: err1 } = await supabase
+        .from('reservations')
+        .select('*, profiles:user_id(first_name, last_name, birth_date)')
+        .eq('trainer_id', profile.id)
+        .order('date', { ascending: true })
+        .order('time', { ascending: true });
+
+      if (err1) {
+        console.error("Chyba načítání mých lekcí:", err1.message);
+      } else {
+        setBookings(myBks || []);
+      }
+
+      const { data: freeBks, error: err2 } = await supabase
+        .from('reservations')
+        .select('*, profiles:user_id(first_name, last_name, birth_date)')
+        .is('trainer_id', null)
+        .in('status', ['PENDING', 'CONFIRMED'])
+        .order('date', { ascending: true })
+        .order('time', { ascending: true });
+
+      if (err2) {
+        console.error("Chyba načítání volných lekcí:", err2.message);
+      } else {
+        setUnassignedBookings(freeBks || []);
+      }
+
+    } catch (e) {
+      console.error("Neočekávaná chyba dat:", e);
+    } finally {
+      setLoading(false);
     }
-
-    if (bks) setBookings(bks);
-    setLoading(false);
   };
 
   useEffect(() => {
-    const checkTrainer = async () => {
+    const init = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/prihlaseni');
-        return;
-      }
-      
-      // Zjistíme roli a zároveň celé jméno trenéra pro filtrování
+      if (!user) return router.push('/prihlaseni');
+
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, first_name, last_name')
+        .select('*')
         .eq('id', user.id)
         .single();
 
-      if (!profile || profile.role !== 'TRAINER') {
-        router.push('/dashboard');
-        return;
-      }
-
-      const trainerFullName = `${profile.first_name} ${profile.last_name}`;
-      fetchData(trainerFullName);
+      if (!profile || profile.role !== 'TRAINER') return router.push('/dashboard');
+      
+      setTrainerProfile(profile);
+      fetchData(profile);
     };
-    checkTrainer();
+    init();
   }, [router]);
 
-  // Výpočet matice - propojujeme na správné sloupce (time namísto start_time)
-  const calculatedDaysMatrix = useMemo(() => {
-    return upcomingSevenDays.map(day => {
+  const handleClaimBooking = async (bookingId: string) => {
+    if (!trainerProfile) return;
+    const trainerName = `${trainerProfile.first_name} ${trainerProfile.last_name}`;
+    
+    const { error } = await supabase
+      .from('reservations')
+      .update({ 
+        trainer_id: trainerProfile.id,
+        trainer: trainerName,
+        status: 'CONFIRMED'
+      })
+      .eq('id', bookingId);
+
+    if (!error) {
+      alert('Trénink byl úspěšně přiřazen vám!');
+      fetchData(trainerProfile);
+    } else {
+      alert('Chyba při přebírání lekce: ' + error.message);
+    }
+  };
+
+  const { upcomingTrainings, pastTrainings } = useMemo(() => {
+    // Pro bezpečné porovnání získáme dnešní lokální ISO řetězec
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    
+    const upcoming: any[] = [];
+    const past: any[] = [];
+
+    bookings.forEach((b) => {
+      const clientStats = globalClientsStats[b.user_id] || {
+        full_name: b.profiles?.first_name || b.profiles?.last_name 
+          ? `${b.profiles.first_name || ''} ${b.profiles.last_name || ''}`.trim() 
+          : 'Nový klient',
+        age: calculateAge(b.profiles?.birth_date),
+        completed_trainings: 0
+      };
+
+      const enrichedTraining = {
+        ...b,
+        client_name: clientStats.full_name,
+        client_age: clientStats.age,
+        completed_trainings: clientStats.completed_trainings
+      };
+
+      if (b.date >= todayStr) {
+        upcoming.push(enrichedTraining);
+      } else {
+        past.unshift(enrichedTraining);
+      }
+    });
+
+    return { upcomingTrainings: upcoming, pastTrainings: past };
+  }, [bookings, globalClientsStats]);
+
+  const matrix = useMemo(() => {
+    return currentWeekDays.map(day => {
       const slots = GENERATED_SLOTS.map(slot => {
-        // ✅ UPRAVENO: hledáme shodu v 'time'
-        const hasBooking = bookings.find(b => b.date === day.isoString && b.time === slot);
-
-        if (hasBooking) {
-          return {
-            time: slot,
-            status: 'BOOKED',
-            // Jméno vytáhneme z propojeného profilu, pokud ho v matici nepotřebuješ hned textově, dáme placeholder
-            client: 'Klient rezervován', 
-            training: 'EMS Trénink'
-          };
-        }
-
-        return {
-          time: slot,
-          status: 'OFF'
-        };
+        const myBooking = bookings.find(b => b.date?.trim() === day.isoString && b.time?.trim().startsWith(slot));
+        const freeBooking = unassignedBookings.find(b => b.date?.trim() === day.isoString && b.time?.trim().startsWith(slot));
+        return { time: slot, myBooking, freeBooking };
       });
-
       return { ...day, slots };
     });
-  }, [upcomingSevenDays, bookings]);
+  }, [currentWeekDays, bookings, unassignedBookings]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <span className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
+        <span className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row text-gray-900">
-      <Sidebar onLogout={async () => { await supabase.auth.signOut(); router.push('/prihlaseni'); }} />
+      <Sidebar onLogout={() => supabase.auth.signOut().then(() => router.push('/prihlaseni'))} />
 
       <main className="flex-1 p-6 md:p-10 max-w-7xl space-y-8 overflow-x-hidden">
-        <header>
-          <h1 className="text-3xl font-bold text-gray-900">Přehled rezervací a klientů 👥</h1>
-          <p className="text-gray-500 mt-1">
-            Čisté zobrazení obsazenosti rozvrhu a detailní přehled nejbližších tréninků.
-          </p>
-        </header>
-
-        {/* 1. BLOK: ČASOVÁ OSA */}
-        <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-              <Calendar size={20} className="text-purple-600" /> Obsazenost v tomto týdnu
-            </h2>
-            <div className="flex items-center gap-1.5 text-xs font-bold text-gray-500">
-              <span className="w-3.5 h-3.5 rounded bg-purple-600" /> Trénink s klientem
-            </div>
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Trenérský Portál 📅</h1>
+            <p className="text-gray-500 mt-1">Vítejte zpět, {trainerProfile?.first_name || 'trenére'}. Zde je správa vašich lekcí.</p>
           </div>
 
+          {/* Přepínač týdnů */}
+          <div className="flex bg-white rounded-xl shadow-sm border border-gray-200 p-1 select-none items-center self-start md:self-auto">
+            <button 
+              onClick={() => setWeekOffset(prev => prev - 1)} 
+              className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-indigo-600"
+              title="Předchozí týden"
+            >
+              <StepBack size={18}/>
+            </button>
+            <div className="px-4 py-1.5 font-bold text-sm flex items-center min-w-[120px] justify-center text-gray-700">
+              {weekOffset === 0 ? 'Tento týden' : `${weekOffset > 0 ? '+' : ''}${weekOffset} týd`}
+            </div>
+            <button 
+              onClick={() => setWeekOffset(prev => prev + 1)} 
+              className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-indigo-600"
+              title="Další týden"
+            >
+              <StepForward size={18}/>
+            </button>
+          </div>
+        </header>
+
+        {/* SEKCE 1: TÝDENNÍ ČASOVÁ OSA */}
+        <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 px-1">
+            <h2 className="font-bold flex items-center gap-2 text-gray-900">
+              <Clock className="text-indigo-600" size={20}/> Týdenní časová osa
+            </h2>
+            <div className="flex flex-wrap gap-4 text-xs font-bold text-gray-500">
+              <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-emerald-500" /> Moje lekce</div>
+              <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-orange-400" /> Čekají na trenéra</div>
+              <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-gray-100 border border-gray-200" /> Volno</div>
+            </div>
+          </div>
+          
           <div className="overflow-x-auto min-w-full pt-2">
             <div className="inline-block min-w-[950px] w-full">
               
-              {/* Hodiny */}
+              {/* Popisky hodin nad osou */}
               <div className="flex items-center mb-1 text-[10px] font-bold text-gray-400 text-center">
                 <div className="w-36 shrink-0 text-left pl-2">Datum a den</div>
                 <div className="flex-1 flex">
@@ -203,37 +325,41 @@ export default function ClientBookingsPage() {
                 </div>
               </div>
 
-              {/* 7 Řádků */}
-              <div className="space-y-2">
-                {calculatedDaysMatrix.map(day => (
+              {/* 7 řádků (Pondělí až Neděle) */}
+              <div className="space-y-2.5">
+                {matrix.map(day => (
                   <div key={day.isoString} className="flex items-center group">
                     
-                    {/* Datum */}
+                    {/* Levý sloupec s reálným datem */}
                     <div className="w-36 shrink-0 text-sm flex flex-col justify-center leading-tight">
                       <span className="font-extrabold text-gray-800">{day.formatted}</span>
-                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${day.isToday ? 'text-indigo-600' : 'text-gray-400'}`}>
                         {day.isToday ? 'Dnes' : DAYS_NAMES[day.dayOfWeek]}
                       </span>
                     </div>
 
-                    {/* Osa */}
-                    <div className="flex-1 flex h-10 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shadow-sm">
+                    {/* Spojená 26sloupcová časová osa bez mezer */}
+                    <div className="flex-1 flex h-12 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50">
                       {day.slots.map((slot, idx) => {
-                        const isBooked = slot.status === 'BOOKED';
+                        const isMine = !!slot.myBooking;
+                        const isFree = !!slot.freeBooking;
+
+                        let bgClass = 'bg-gray-100 hover:bg-gray-200/70'; // Výchozí stav (Volno)
+                        if (isMine) bgClass = 'bg-emerald-500 border-emerald-600/20 shadow-inner';
+                        if (isFree) bgClass = 'bg-orange-400 border-orange-500/20 shadow-inner';
+
                         return (
                           <div
                             key={idx}
-                            className={`flex-1 border-r border-gray-200/30 last:border-0 transition-all flex items-center justify-center select-none ${
-                              isBooked 
-                                ? 'bg-purple-600 hover:bg-purple-700 cursor-pointer' 
-                                : 'bg-gray-50 text-transparent'
+                            className={`flex-1 border-r border-gray-200/40 last:border-0 transition-all flex flex-col items-center justify-center select-none ${bgClass}`}
+                            title={`${day.formatted} v ${slot.time} – ${
+                              isMine ? 'Váš trénink' : isFree ? 'Lekce čeká na trenéra' : 'Volno'
                             }`}
-                            title={isBooked ? `🚨 ${slot.client} (${slot.time})` : `Volno (${slot.time})`}
                           >
-                            {isBooked && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
-                            {!isBooked && slot.time.split(':')[1] === '00' && (
-                              <span className="text-[8px] opacity-10 text-gray-900">•</span>
-                            )}
+                            {/* Jemná tečka značící celou hodinu */}
+                            <span className="text-[8px] font-medium opacity-20">
+                              {slot.time.split(':')[1] === '00' ? '•' : ''}
+                            </span>
                           </div>
                         );
                       })}
@@ -247,60 +373,118 @@ export default function ClientBookingsPage() {
           </div>
         </section>
 
-        {/* 2. BLOK: 10 NEJBLIŽŠÍCH TRÉNINKŮ */}
-        <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-          <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <Users size={20} className="text-purple-600" /> 10 nejbližších tréninků
-          </h2>
+        {/* TŘÍSLOUPCOVÝ LAYOUT TRÉNINKŮ */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* SLOUPEC 1: NEJBLIŽŠÍ TRÉNINKY */}
+          <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+              <CheckCircle2 className="text-emerald-500" size={20}/> Nejbližší tréninky
+            </h2>
+            <div className="space-y-3 overflow-y-auto max-h-[550px] pr-1">
+              {upcomingTrainings.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm border border-dashed rounded-xl">Žádné naplánované tréninky.</div>
+              ) : (
+                upcomingTrainings.map((tr: any) => (
+                  <div key={tr.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200/60 space-y-2.5 hover:shadow-sm transition">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="font-bold text-gray-800 text-base leading-tight">{tr.client_name}</div>
+                      <span className="text-[11px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-lg shrink-0 border border-indigo-100/70">{formatCzechDate(tr.date)} – {tr.time}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500 font-semibold">
+                      <span>Věk: <strong className="text-gray-700">{tr.client_age !== null ? tr.client_age : '-'}</strong></span>
+                      <span>Absolvované lekce: <strong className="text-emerald-600 font-bold">{tr.completed_trainings}</strong></span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
 
-          <div className="overflow-x-auto rounded-xl border border-gray-100">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50 text-gray-400 uppercase text-[10px] font-bold tracking-wider border-b">
-                  <th className="p-4">Datum a čas</th>
-                  <th className="p-4">Klient</th>
-                  <th className="p-4 text-center">Věk</th>
-                  <th className="p-4">Typ tréninku</th>
-                  <th className="p-4 text-center">Absolvované lekce</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 text-sm">
-                {upcomingTrainings.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-gray-400 font-medium">
-                      Žádné nadcházející rezervace nebyly nalezeny.
-                    </td>
-                  </tr>
-                ) : (
-                  upcomingTrainings.map((b) => (
-                    <tr key={b.id} className="hover:bg-gray-50/80 transition-colors">
-                      <td className="p-4 font-bold text-gray-700">
-                        {new Date(b.date).toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' })} v {b.time}
-                      </td>
-                      <td className="p-4 font-extrabold text-purple-900">
-                        {/* ✅ Data se berou bezpečně skrze JOIN z tabulky profiles */}
-                        {b.profiles?.full_name || 'Neznámý klient'}
-                      </td>
-                      <td className="p-4 text-center text-gray-600 font-semibold">
-                        {b.profiles?.age ? `${b.profiles.age} let` : '-'}
-                      </td>
-                      <td className="p-4">
-                        <span className="bg-purple-50 text-purple-700 px-2.5 py-1 rounded-md text-xs font-bold border border-purple-100">
-                          EMS Trénink
-                        </span>
-                      </td>
-                      <td className="p-4 text-center">
-                        <span className="bg-gray-100 text-gray-700 px-2.5 py-1 rounded-full text-xs font-bold">
-                          {b.profiles?.completed_trainings || 0} ×
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+          {/* SLOUPEC 2: PROBĚHLÉ TRÉNINKY */}
+          <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+              <History className="text-blue-500" size={20}/> Proběhlé tréninky
+            </h2>
+            <div className="space-y-3 overflow-y-auto max-h-[550px] pr-1">
+              {pastTrainings.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm border border-dashed rounded-xl">Žádná historie tréninků.</div>
+              ) : (
+                pastTrainings.map((tr: any) => (
+                  <div key={tr.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200/60 space-y-2.5 hover:shadow-sm transition">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="font-bold text-gray-800 text-base leading-tight">{tr.client_name}</div>
+                      <span className="text-[11px] font-bold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-lg shrink-0 border border-gray-200">{formatCzechDate(tr.date)} – {tr.time}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500 font-semibold">
+                      <span>Věk: <strong className="text-gray-700">{tr.client_age !== null ? tr.client_age : '-'}</strong></span>
+                      <span>Absolvované lekce: <strong className="text-blue-600 font-bold">{tr.completed_trainings}</strong></span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          {/* SLOUPEC 3: KLIENTI ČEKAJÍCÍ NA TRENÉRA */}
+          <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2 border-b border-gray-100 pb-3">
+              <UserPlus className="text-orange-500" size={20}/> Čekající na trenéra
+            </h2>
+            <div className="space-y-3 overflow-y-auto max-h-[550px] pr-1">
+              {unassignedBookings.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 text-sm border border-dashed rounded-xl">Žádné lekce nečekají na převzetí.</div>
+              ) : (
+                unassignedBookings.map((b: any) => {
+                  const isAnyTrainerRequest = b.trainer?.toLowerCase().includes('jakýkoliv') || b.trainer?.toLowerCase().includes('jakykoliv');
+                  const displayTrainerInfo = isAnyTrainerRequest 
+                    ? `Dostupní trenéři: ${trainersListString}` 
+                    : `Požadavek: ${b.trainer || 'Jakýkoliv trenér'}`;
+
+                  const clientFullName = b.profiles?.first_name || b.profiles?.last_name
+                    ? `${b.profiles.first_name || ''} ${b.profiles.last_name || ''}`.trim()
+                    : 'Nový klient';
+
+                  const stats = globalClientsStats[b.user_id] || { age: null, completed_trainings: 0 };
+
+                  return (
+                    <div key={b.id} className="p-4 bg-white rounded-xl border border-orange-100 shadow-sm space-y-3 flex flex-col justify-between hover:border-orange-200 transition">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="font-bold text-gray-800 text-base leading-tight">{clientFullName}</div>
+                          <span className="text-[11px] font-bold bg-orange-50 text-orange-600 px-2 py-0.5 rounded-lg shrink-0 border border-orange-100">{formatCzechDate(b.date)} – {b.time}</span>
+                        </div>
+                        
+                        <div className="flex justify-between text-xs text-gray-500 font-semibold">
+                          <span>Věk: <strong className="text-gray-700">{calculateAge(b.profiles?.birth_date) ?? '-'}</strong></span>
+                          <span>Absolvované lekce: <strong className="text-orange-600 font-bold">{stats.completed_trainings}</strong></span>
+                        </div>
+
+                        <div className={`text-[11px] p-2 rounded-lg font-semibold border leading-tight ${
+                          isAnyTrainerRequest 
+                            ? 'text-blue-700 bg-blue-50 border-blue-100/70' 
+                            : 'text-orange-600 bg-orange-50 border-orange-100/70'
+                        }`}>
+                          {displayTrainerInfo}
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-gray-50 flex items-center justify-end">
+                        <button 
+                          onClick={() => handleClaimBooking(b.id)}
+                          className="bg-orange-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-orange-600 transition shadow-sm shadow-orange-100"
+                        >
+                          Přiřadit sobě
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+        </div>
       </main>
     </div>
   );

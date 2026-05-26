@@ -84,16 +84,6 @@ export default function DashboardPage() {
           <p className="text-gray-500 mt-1">Vítej ve své EMS klientské zóně. Tady máš přehled o svém nastavení.</p>
         </header>
 
-        {/* REZERVAČNÍ RYCHLÁ AKCE */}
-        <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl p-6 text-white shadow-lg mb-8">
-          <h2 className="text-xl font-bold mb-2">Chystáš se na trénink?</h2>
-          <p className="text-emerald-100 text-sm max-w-md mb-4">
-            Efektivní 20minutový trénink ti nastartuje metabolismus na plné obrátky. Rezervuj si svůj termín ještě dnes.
-          </p>
-          <button className="bg-white text-emerald-700 font-bold px-5 py-2.5 rounded-xl hover:bg-emerald-50 transition shadow-sm text-sm">
-            Rezervovat lekci
-          </button>
-        </div>
 
         {/* PŘEHLED ÚDAJŮ */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
