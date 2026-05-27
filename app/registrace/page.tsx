@@ -10,7 +10,6 @@ export default function RegisterPage() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
   
-  // Nové stavy pro vylepšené UI
   const [showPassword, setShowPassword] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -20,6 +19,7 @@ export default function RegisterPage() {
     lastName: '',
     email: '',
     password: '',
+    confirmPassword: '', // Nové pole
     phone: '',
     birthDate: '',
     address: '',
@@ -30,7 +30,6 @@ export default function RegisterPage() {
 
   const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 
-  // Zavření dropdownu při kliknutí mimo něj
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -53,6 +52,13 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Validace shody hesel
+    if (formData.password !== formData.confirmPassword) {
+      setError('Hesla se neshodují.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -77,42 +83,38 @@ export default function RegisterPage() {
     }
   };
 
-  // 1. Stav po úspěšné registraci
   if (isSubmitted) {
     return (
       <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center p-6">
         <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-200 text-center">
-          <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.92V6.75" />
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-3">Zkontroluj si e-mail</h1>
           <p className="text-gray-600 mb-6">
-            Na adresu <span className="font-semibold text-gray-900">{registeredEmail}</span> jsme ti právě poslali potvrzovací odkaz. Pro aktivaci účtu na něj klikni.
+            Na adresu <span className="font-semibold text-gray-900">{registeredEmail}</span> jsme ti právě poslali potvrzovací odkaz.
           </p>
-          <div className="pt-2">
-            <button
-              onClick={() => router.push('/prihlaseni')}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition duration-200 shadow-md"
-            >
-              Přejít na přihlášení
-            </button>
-          </div>
+          <button
+            onClick={() => router.push('/prihlaseni')}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition shadow-md"
+          >
+            Přejít na přihlášení
+          </button>
         </div>
       </div>
     );
   }
 
-  // 2. Hlavní formulář
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center p-6">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-2xl border border-gray-200 my-8">
+    <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center p-6 py-12">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-2xl border border-gray-200">
         <h1 className="text-3xl font-bold mb-2 text-center text-emerald-600">Registrace člena</h1>
-        <p className="text-gray-500 text-center mb-8">Zadej své údaje pro přístup do rezervačního systému EMS.</p>
+        <p className="text-gray-500 text-center mb-8">Staň se součástí týmu EMS Znojmo.</p>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-xl mb-6 text-sm text-center font-medium">
+          <div className="bg-red-50 border border-red-200 text-red-600 p-4 rounded-xl mb-6 text-sm text-center animate-pulse">
             {error}
           </div>
         )}
@@ -125,10 +127,11 @@ export default function RegisterPage() {
               <input
                 type="text"
                 name="firstName"
+                autoComplete="given-name"
                 required
                 value={formData.firstName}
                 onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none transition"
                 placeholder="Jan"
               />
             </div>
@@ -137,62 +140,77 @@ export default function RegisterPage() {
               <input
                 type="text"
                 name="lastName"
+                autoComplete="family-name"
                 required
                 value={formData.lastName}
                 onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none transition"
                 placeholder="Novák"
               />
             </div>
           </div>
 
-          {/* Email a Heslo (se zobrazením hesla) */}
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-semibold mb-2 text-gray-700">E-mail *</label>
+            <input
+              type="email"
+              name="email"
+              autoComplete="email"
+              required
+              value={formData.email}
+              onChange={handleChange}
+              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none transition"
+              placeholder="jan.novak@email.cz"
+            />
+          </div>
+
+          {/* Hesla */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">E-mail *</label>
-              <input
-                type="email"
-                name="email"
-                required
-                value={formData.email}
-                onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
-                placeholder="jan.novak@email.cz"
-              />
-            </div>
             <div>
               <label className="block text-sm font-semibold mb-2 text-gray-700">Heslo *</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   name="password"
+                  autoComplete="new-password"
                   required
                   minLength={6}
                   value={formData.password}
                   onChange={handleChange}
-                  className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-4 pr-12 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500 transition"
                   placeholder="••••••••"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 transition"
-                >
-                  {showPassword ? (
-                    // Ikonka skrytého oka
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 1-4.243-4.243m4.242 4.242L9.88 9.88" />
-                    </svg>
-                  ) : (
-                    // Ikonka oka
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.645C3.304 7.521 7.244 4.5 12 4.5c4.756 0 8.773 3.162 10.065 7.498a1.012 1.012 0 0 1 0 .645C20.696 16.479 16.756 19.5 12 19.5c-4.756 0-8.773-3.162-10.065-7.498z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
-                    </svg>
-                  )}
-                </button>
               </div>
             </div>
+            <div>
+              <label className="block text-sm font-semibold mb-2 text-gray-700">Potvrzení hesla *</label>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="confirmPassword"
+                autoComplete="new-password"
+                required
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                className={`w-full bg-gray-50 border rounded-xl px-4 py-3 outline-none transition focus:ring-2 focus:ring-emerald-500 ${
+                  formData.confirmPassword && formData.password !== formData.confirmPassword 
+                  ? 'border-red-400' 
+                  : 'border-gray-300'
+                }`}
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+          
+          {/* Přepínač zobrazení hesla */}
+          <div className="flex items-center gap-2 -mt-2">
+            <input 
+              type="checkbox" 
+              id="show-pass" 
+              onChange={() => setShowPassword(!showPassword)}
+              className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+            />
+            <label htmlFor="show-pass" className="text-xs text-gray-500 cursor-pointer select-none">Zobrazit hesla</label>
           </div>
 
           {/* Telefon a Datum Narození */}
@@ -202,10 +220,11 @@ export default function RegisterPage() {
               <input
                 type="tel"
                 name="phone"
+                autoComplete="tel"
                 required
                 value={formData.phone}
                 onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none transition"
                 placeholder="+420 123 456 789"
               />
             </div>
@@ -214,116 +233,61 @@ export default function RegisterPage() {
               <input
                 type="date"
                 name="birthDate"
+                autoComplete="bday"
                 value={formData.birthDate || ''}
                 onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none transition"
               />
             </div>
           </div>
 
-          {/* Adresa a Custom Velikost Oblečení Dropdown */}
+          {/* Adresa a Velikost */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold mb-2 text-gray-700">Adresa trvalého bydliště</label>
               <input
                 type="text"
                 name="address"
+                autoComplete="street-address"
                 value={formData.address}
                 onChange={handleChange}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none transition"
                 placeholder="Ulice 123, Znojmo"
               />
             </div>
-            {/* Custom Dropdown */}
             <div className="relative" ref={dropdownRef}>
               <label className="block text-sm font-semibold mb-2 text-gray-700">Velikost EMS</label>
               <button
                 type="button"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 flex items-center justify-between focus:outline-none focus:border-emerald-500 focus:bg-white transition text-left"
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 flex items-center justify-between focus:ring-2 focus:ring-emerald-500 transition"
               >
                 <span>{formData.clothingSize}</span>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                  className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={`w-4 h-4 transition ${isDropdownOpen ? 'rotate-180' : ''}`}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
               </button>
-
               {isDropdownOpen && (
-                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto focus:outline-none py-1">
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-2xl py-1 overflow-hidden">
                   {sizes.map((size) => (
-                    <button
-                      key={size}
-                      type="button"
-                      onClick={() => handleSizeSelect(size)}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                        formData.clothingSize === size
-                          ? 'bg-emerald-50 text-emerald-600 font-semibold'
-                          : 'text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      {size}
-                    </button>
+                    <button key={size} type="button" onClick={() => handleSizeSelect(size)} className="w-full text-left px-4 py-2 hover:bg-emerald-50 hover:text-emerald-600 transition-colors">{size}</button>
                   ))}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Poznámky */}
-          <div>
-            <label className="block text-sm font-semibold mb-2 text-gray-700">Poznámky</label>
-            <textarea
-              name="customer_note"
-              rows={3}
-              value={formData.customer_note}
-              onChange={handleChange}
-              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition resize-none"
-              placeholder="Např. jsem diabetik"
-            />
-          </div>
-
-          {/* Fitness Cíle */}
-          <div>
-            <label className="block text-sm font-semibold mb-2 text-gray-700">Jaké jsou tvé fitness cíle?</label>
-            <textarea
-              name="goals"
-              rows={3}
-              value={formData.goals}
-              onChange={handleChange}
-              className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition resize-none"
-              placeholder="Např. redukce váhy, odstranění bolesti zad..."
-            />
-          </div>
-
           {/* Tlačítko */}
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition duration-200 shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {loading ? 'Zpracovávám registraci...' : 'Dokončit registraci'}
-            </button>
-          </div>
-
-          {/* Odkaz na Přihlášení pro stávající uživatele */}
-          <p className="text-center text-sm text-gray-500 mt-4">
-            Už máš účet?{' '}
-            <button
-              type="button"
-              onClick={() => router.push('/prihlaseni')}
-              className="text-emerald-600 font-semibold hover:text-emerald-700 hover:underline transition focus:outline-none"
-            >
-              Přihlas se
-            </button>
-          </p>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl transition duration-200 shadow-lg disabled:opacity-50 flex items-center justify-center gap-3"
+          >
+            {loading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Registruji...
+              </>
+            ) : 'Dokončit registraci'}
+          </button>
         </form>
       </div>
     </div>
