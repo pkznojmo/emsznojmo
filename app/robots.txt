@@ -6,11 +6,11 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: '*',
       allow: '/',
       disallow: [
-        '/dashboard/', 
-        '/api/', 
-        '/prihlaseni', 
+        '/dashboard/',
+        '/api/',
+        '/prihlaseni',
         '/registrace',
-        '/rezervace'
+        '/rezervace',
       ],
     },
     sitemap: 'https://emsznojmo.cz/sitemap.xml',
