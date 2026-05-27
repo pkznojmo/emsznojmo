@@ -312,7 +312,7 @@ export default function DashboardPage() {
     fetchData();
   }, [router]);
 
-  const formatDate = (dateStr: string | null) => {
+  const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return 'Neuvedeno';
     const [year, month, day] = dateStr.split('-');
     return `${day}.${month}.${year}`;
