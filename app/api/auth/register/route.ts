@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Použijeme SERVICE_ROLE_KEY pro zápis do DB bez omezení RLS
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Ujisti se, že ho máš v .env
-);
-
 export async function POST(request: Request) {
   try {
+    // Inicializace klienta až uvnitř handleru – bezpečné pro build
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("Chybí Supabase konfigurace v proměnných prostředí!");
+      return NextResponse.json({ error: 'Chyba konfigurace serveru.' }, { status: 500 });
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
     const body = await request.json();
     const { 
       email, password, firstName, lastName, phone, 
@@ -21,7 +26,6 @@ export async function POST(request: Request) {
     }
 
     // 2. Kontrola, zda e-mail už neexistuje v profiles
-    // (Předchází chybě 23503, o které jsme mluvili)
     const { data: existingUser } = await supabaseAdmin
       .from('profiles')
       .select('email')
@@ -33,7 +37,6 @@ export async function POST(request: Request) {
     }
 
     // 3. Registrace do Supabase Auth
-    // Data ukládáme i do metadata – je to záloha a profi standard
     const { data: authData, error: authError } = await supabaseAdmin.auth.signUp({
       email,
       password,
@@ -55,7 +58,6 @@ export async function POST(request: Request) {
     }
 
     // 4. Zápis do tabulky profiles
-    // Používáme data přímo z authData.user.id pro absolutní jistotu
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .insert([
@@ -75,8 +77,6 @@ export async function POST(request: Request) {
       ]);
 
     if (profileError) {
-      // Pokud profil selže, můžeme teoreticky uživatele z Auth smazat, 
-      // aby se mohl zkusit registrovat znovu se stejným mailem
       console.error('DB Profile Error:', profileError);
       return NextResponse.json({ 
         error: 'Chyba při ukládání dat profilu. Zkuste to prosím znovu.' 
