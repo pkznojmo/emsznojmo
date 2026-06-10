@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /prihlaseni
+Disallow: /registrace
+Disallow: /rezervace
+
+Sitemap: https://emsznojmo.cz/sitemap.xml
