@@ -6,7 +6,7 @@ import Sidebar from '../../comp/Sidebar';
 import { Calendar as CalendarIcon, Clock, User, ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
-interface DbTrainer { id: string; first_name: string; last_name: string; }
+interface DbTrainer { id: string; first_name: string; last_name: string; email?: string; }
 interface TrainerAvailability { trainer_id: string; day_of_week: number; start_time: string; end_time: string; }
 interface TrainerException { trainer_id: string; date: string; start_time: string; end_time: string; type: 'AVAILABLE' | 'UNAVAILABLE'; }
 interface ExistingReservation { trainer_id: string | null; date: string; time: string; }
@@ -33,6 +33,7 @@ export default function NewLessonPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   
   const [userId, setUserId] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<{ first_name?: string; last_name?: string; email?: string } | null>(null);
   const [trainers, setTrainers] = useState<DbTrainer[]>([]);
   const [availabilities, setAvailabilities] = useState<TrainerAvailability[]>([]);
   const [exceptions, setExceptions] = useState<TrainerException[]>([]);
@@ -92,8 +93,21 @@ export default function NewLessonPage() {
       if (!authUser) { router.push('/prihlaseni'); return; }
       setUserId(authUser.id);
 
+      // Načtení profilu přihlášeného klienta
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, email')
+        .eq('id', authUser.id)
+        .single();
+
+      setUserProfile({
+        first_name: profile?.first_name || '',
+        last_name: profile?.last_name || '',
+        email: profile?.email || authUser.email || '',
+      });
+
       const [t, a, e, r] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name').eq('role', 'TRAINER'),
+        supabase.from('profiles').select('id, first_name, last_name, email').eq('role', 'TRAINER'),
         supabase.from('trainer_availability').select('*'),
         supabase.from('trainer_exceptions').select('*'),
         supabase.from('reservations').select('trainer_id, date, time').in('status', ['CONFIRMED', 'PENDING'])
@@ -132,7 +146,7 @@ export default function NewLessonPage() {
         return (hasAvailability || hasExtra) && !isUnavailable;
       });
 
-      const reservationsAtSlot = existingReservations.filter(r => r.date === selectedDate && r.time === slot);
+      const reservationsAtSlot = existingReservations.filter(r => r.date === selectedDate && (r.time === slot || r.time.startsWith(slot)));
       const isRoomOccupied = reservationsAtSlot.length > 0;
 
       let isSlotUnavailable = false;
@@ -160,6 +174,7 @@ export default function NewLessonPage() {
     return day ? (day.isToday || day.isPast) : false;
   }, [selectedDate, upcomingDays]);
 
+  // NOVÁ ODESÍLACÍ LOGIKA PŘES API ROUTE /api/reservations
   const handleBooking = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!selectedTime || !selectedDate || !userId || intentToBookTodayOrPast) return;
@@ -168,41 +183,61 @@ export default function NewLessonPage() {
     setError('');
 
     try {
-      let targetTrainerId: string | null = null;
-      let trainerFullName = '';
-      let reservationStatus = 'CONFIRMED';
-
       const currentSlot = timeSlotsWithStatus.find(s => s.time === selectedTime);
       if (!currentSlot || currentSlot.isUnavailable) {
         throw new Error('Tento čas se mezitím obsadil nebo není k dispozici.');
       }
 
-      if (selectedTrainer === 'Jakýkoliv trenér') {
-        targetTrainerId = null;
-        trainerFullName = 'Jakýkoliv trenér (Čeká na přiřazení)';
-        reservationStatus = 'PENDING';
-      } else {
+      let targetTrainerId: string | null = null;
+      let trainerFullName = 'Jakýkoliv trenér';
+      
+      // Pole e-mailů pro trenéry, kterým má e-mail odejít
+      let trainerEmails: string[] = [];
+
+      if (selectedTrainer !== 'Jakýkoliv trenér') {
         const t = trainers.find(trainer => trainer.id === selectedTrainer);
-        targetTrainerId = selectedTrainer;
-        trainerFullName = t ? `${t.first_name} ${t.last_name}` : 'Neznámý trenér';
-        reservationStatus = 'CONFIRMED';
+        if (t) {
+          targetTrainerId = t.id;
+          trainerFullName = `${t.first_name} ${t.last_name}`;
+          if (t.email) trainerEmails.push(t.email);
+        }
+      } else {
+        // Všichni trenéři dostanou e-mail
+        trainerEmails = trainers
+          .map(t => t.email)
+          .filter((email): email is string => Boolean(email));
       }
 
-      const { error: dbError } = await supabase.from('reservations').insert([{
-        user_id: userId, 
-        date: selectedDate, 
-        time: selectedTime, 
-        trainer: trainerFullName, 
-        trainer_id: targetTrainerId, 
-        status: reservationStatus
-      }]);
+      const customerFullName = `${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim() || 'Klient EMS';
+      const customerEmail = userProfile?.email || '';
 
-      if (dbError) throw dbError;
+      // Volání tvého serverového API
+      const res = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          trainer_id: targetTrainerId,
+          date: selectedDate,
+          time: `${selectedTime} - ${calculateEndTime(selectedTime)}`,
+          trainerName: trainerFullName,
+          trainerEmails: trainerEmails, // Posíláme pole e-mailů!
+          customerName: customerFullName,
+          customerEmail: customerEmail,
+          serviceName: 'EMS Trénink',
+        }),
+      });
 
-      if (reservationStatus === 'PENDING') {
-        alert('Rezervace úspěšně odeslána! Trenéři obdrží upozornění a termín potvrdí.');
+      const responseData = await res.json();
+
+      if (!res.ok) {
+        throw new Error(responseData.error || 'Při odesílání rezervace došlo k chybě.');
+      }
+
+      if (selectedTrainer === 'Jakýkoliv trenér') {
+        alert('Žádost o rezervaci byla úspěšně odeslána! Trenéři obdrží e-mail a termín potvrdí.');
       } else {
-        alert('Rezervace úspěšně vytvořena!');
+        alert('Rezervace úspěšně vytvořena! Potvrzení s kalendářem jsme ti poslali na e-mail.');
       }
       
       router.push('/dashboard/rezervace');
@@ -255,10 +290,7 @@ export default function NewLessonPage() {
               </h2>
             </div>
             
-            {/* MOBILNÍ CHYTRÁ MŘÍŽKA - OBSAHUJE I PŘEPÍNAČ TÝDNE JAKO PRVNÍ ŘÁDEK */}
             <div className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2">
-              
-              {/* OVLÁDÁNÍ TÝDNŮ - Samostatný řádek na mobilu (col-span-3), na desktopu se začlení jako klasický prvek */}
               <div className="col-span-3 sm:col-span-1 flex items-center justify-between bg-white p-2 rounded-xl border border-gray-100 shadow-sm sm:min-w-[140px]">
                 <button 
                   onClick={() => setWeekOffset(prev => Math.max(0, prev - 1))}
@@ -280,7 +312,6 @@ export default function NewLessonPage() {
                 </button>
               </div>
 
-              {/* SEZNAM DNŮ */}
               {upcomingDays.map((d, index) => {
                 const isSelected = selectedDate === d.isoString;
                 const isLastOnMobile = index === 6;

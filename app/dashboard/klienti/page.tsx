@@ -10,7 +10,6 @@ const DAYS_NAMES: { [key: number]: string } = {
   1: 'Pondělí', 2: 'Úterý', 3: 'Středa', 4: 'Čtvrtek', 5: 'Pátek', 6: 'Sobota', 0: 'Neděle'
 };
 
-// Pomocná funkce pro převod YYYY-MM-DD na hezké české datum "D.M." (bez roku a mezer)
 const formatCzechDate = (dateString: string | null) => {
   if (!dateString) return '-';
   const date = new Date(dateString);
@@ -18,7 +17,6 @@ const formatCzechDate = (dateString: string | null) => {
   return date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric' }).replace(/\s+/g, '');
 };
 
-// Pomocná funkce na výpočet věku z birth_date
 const calculateAge = (birthDateString: string | null) => {
   if (!birthDateString) return null;
   const birthDate = new Date(birthDateString);
@@ -31,7 +29,6 @@ const calculateAge = (birthDateString: string | null) => {
   return age;
 };
 
-// Generátor 26 časových slotů (06:00 až 18:30 -> pokrývá čas do 19:00)
 const GENERATED_SLOTS = (() => {
   const slots = [];
   for (let hour = 6; hour <= 18; hour++) {
@@ -42,7 +39,6 @@ const GENERATED_SLOTS = (() => {
   return slots;
 })();
 
-// Bezpečná funkce pro získání pondělí až neděle na základě offsetu týdnů (bez posunu časového pásma)
 const getWeekDays = (weekOffset = 0) => {
   const days = [];
   const options: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'numeric' };
@@ -88,36 +84,40 @@ export default function TrainerDashboardPage() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [unassignedBookings, setUnassignedBookings] = useState<any[]>([]);
   const [allTrainers, setAllTrainers] = useState<any[]>([]);
+  const [availabilities, setAvailabilities] = useState<any[]>([]);
+  const [exceptions, setExceptions] = useState<any[]>([]);
   const [globalClientsStats, setGlobalClientsStats] = useState<{ [key: string]: any }>({});
   const [weekOffset, setWeekOffset] = useState(0);
 
-  // Pole 7 dní od pondělí do neděle pro zvolený týden
   const currentWeekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
-
-  // Seznam všech trenérů do textového řetězce
-  const trainersListString = useMemo(() => {
-    if (allTrainers.length === 0) return 'Monika Dufková, David Křivan';
-    return allTrainers
-      .map(t => `${t.first_name || ''} ${t.last_name || ''}`.trim())
-      .filter(Boolean)
-      .join(', ');
-  }, [allTrainers]);
 
   const fetchData = async (profile: any) => {
     setLoading(true);
     try {
+      // 1. Trenéři
       const { data: trainersData } = await supabase
         .from('profiles')
-        .select('first_name, last_name')
+        .select('id, first_name, last_name')
         .eq('role', 'TRAINER');
-      
       if (trainersData) setAllTrainers(trainersData);
 
+      // 2. Pravidelná dostupnost trenérů
+      const { data: availData } = await supabase
+        .from('trainer_availability')
+        .select('*');
+      if (availData) setAvailabilities(availData);
+
+      // 3. Výjimky v dostupnosti
+      const { data: excData } = await supabase
+        .from('trainer_exceptions')
+        .select('*');
+      if (excData) setExceptions(excData);
+
+      // 4. Rezervace pro statistiky
       const { data: allReservations } = await supabase
         .from('reservations')
         .select('date, user_id, status, profiles:user_id(first_name, last_name, birth_date)');
 
-      // Získání dnešního ISO data pro porovnání proběhlých tréninků
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -136,27 +136,24 @@ export default function TrainerDashboardPage() {
           };
         }
         
-        // Započítat pouze pokud je trénink potvrzený A už proběhl (jeho datum je menší než dnešní)
         if (res.status === 'CONFIRMED' && res.date && res.date < todayStr) {
           statsMap[res.user_id].completed_trainings += 1;
         }
       });
       setGlobalClientsStats(statsMap);
 
-      const { data: myBks, error: err1 } = await supabase
+      // 5. Moje rezervace
+      const { data: myBks } = await supabase
         .from('reservations')
         .select('*, profiles:user_id(first_name, last_name, birth_date)')
         .eq('trainer_id', profile.id)
         .order('date', { ascending: true })
         .order('time', { ascending: true });
 
-      if (err1) {
-        console.error("Chyba načítání mých lekcí:", err1.message);
-      } else {
-        setBookings(myBks || []);
-      }
+      setBookings(myBks || []);
 
-      const { data: freeBks, error: err2 } = await supabase
+      // 6. Volné rezervace bez trenéra
+      const { data: freeBks } = await supabase
         .from('reservations')
         .select('*, profiles:user_id(first_name, last_name, birth_date)')
         .is('trainer_id', null)
@@ -164,11 +161,7 @@ export default function TrainerDashboardPage() {
         .order('date', { ascending: true })
         .order('time', { ascending: true });
 
-      if (err2) {
-        console.error("Chyba načítání volných lekcí:", err2.message);
-      } else {
-        setUnassignedBookings(freeBks || []);
-      }
+      setUnassignedBookings(freeBks || []);
 
     } catch (e) {
       console.error("Neočekávaná chyba dat:", e);
@@ -195,6 +188,46 @@ export default function TrainerDashboardPage() {
     };
     init();
   }, [router]);
+
+  // POMOCNÁ FUNKCE: Zjistí, kteří trenéři jsou reálně dostupní pro dané datum a čas
+  const getAvailableTrainersForSlot = (dateStr: string, timeStr: string) => {
+    if (!dateStr || !timeStr) return [];
+
+    const dateObj = new Date(dateStr);
+    const dayOfWeek = dateObj.getDay(); // 0 = Neděle, 1 = Pondělí, ...
+    const cleanTime = timeStr.split('-')[0].trim(); // Převede "14:00 - 14:45" na "14:00"
+
+    return allTrainers.filter(trainer => {
+      // a) Kontrola výjimek (UNAVAILABLE ruší dostupnost, AVAILABLE ji vynucuje)
+      const hasUnavailableExc = exceptions.some(exc => 
+        exc.trainer_id === trainer.id && 
+        exc.date === dateStr && 
+        exc.start_time <= cleanTime && 
+        exc.end_time > cleanTime && 
+        exc.type === 'UNAVAILABLE'
+      );
+      if (hasUnavailableExc) return false;
+
+      const hasAvailableExc = exceptions.some(exc => 
+        exc.trainer_id === trainer.id && 
+        exc.date === dateStr && 
+        exc.start_time <= cleanTime && 
+        exc.end_time > cleanTime && 
+        exc.type === 'AVAILABLE'
+      );
+      if (hasAvailableExc) return true;
+
+      // b) Kontrola běžného rozvrhu (trainer_availability)
+      const hasRegularAvail = availabilities.some(avail => 
+        avail.trainer_id === trainer.id && 
+        avail.day_of_week === dayOfWeek && 
+        avail.start_time <= cleanTime && 
+        avail.end_time > cleanTime
+      );
+
+      return hasRegularAvail;
+    });
+  };
 
   const handleClaimBooking = async (bookingId: string) => {
     if (!trainerProfile) return;
@@ -280,7 +313,6 @@ export default function TrainerDashboardPage() {
             <p className="text-gray-500 mt-1">Vítejte zpět, {trainerProfile?.first_name || 'trenére'}. Zde je správa vašich lekcí.</p>
           </div>
 
-          {/* Přepínač týdnů */}
           <div className="flex bg-white rounded-xl shadow-sm border border-gray-200 p-1 select-none items-center self-start md:self-auto">
             <button 
               onClick={() => setWeekOffset(prev => prev - 1)} 
@@ -317,8 +349,6 @@ export default function TrainerDashboardPage() {
           
           <div className="overflow-x-auto min-w-full pt-2">
             <div className="inline-block min-w-[950px] w-full">
-              
-              {/* Popisky hodin nad osou */}
               <div className="flex items-center mb-1 text-[10px] font-bold text-gray-400 text-center">
                 <div className="w-36 shrink-0 text-left pl-2">Datum a den</div>
                 <div className="flex-1 flex">
@@ -330,12 +360,9 @@ export default function TrainerDashboardPage() {
                 </div>
               </div>
 
-              {/* 7 řádků (Pondělí až Neděle) */}
               <div className="space-y-2.5">
                 {matrix.map(day => (
                   <div key={day.isoString} className="flex items-center group">
-                    
-                    {/* Levý sloupec s reálným datem */}
                     <div className="w-36 shrink-0 text-sm flex flex-col justify-center leading-tight">
                       <span className="font-extrabold text-gray-800">{day.formatted}</span>
                       <span className={`text-[10px] font-bold uppercase tracking-wider ${day.isToday ? 'text-indigo-600' : 'text-gray-400'}`}>
@@ -343,7 +370,6 @@ export default function TrainerDashboardPage() {
                       </span>
                     </div>
 
-                    {/* Spojená 26sloupcová časová osa bez mezer */}
                     <div className="flex-1 flex h-12 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50">
                       {day.slots.map((slot, idx) => {
                         const isMine = !!slot.myBooking;
@@ -368,11 +394,9 @@ export default function TrainerDashboardPage() {
                         );
                       })}
                     </div>
-
                   </div>
                 ))}
               </div>
-
             </div>
           </div>
         </section>
@@ -441,8 +465,15 @@ export default function TrainerDashboardPage() {
               ) : (
                 unassignedBookings.map((b: any) => {
                   const isAnyTrainerRequest = b.trainer?.toLowerCase().includes('jakýkoliv') || b.trainer?.toLowerCase().includes('jakykoliv');
+                  
+                  // Dynamický výpočet dostupných trenérů pro konkrétní termín rezervace
+                  const availableTrainers = getAvailableTrainersForSlot(b.date, b.time);
+                  const availableTrainersString = availableTrainers.length > 0
+                    ? availableTrainers.map(t => `${t.first_name || ''} ${t.last_name || ''}`.trim()).join(', ')
+                    : 'Žádný trenér nemá volno';
+
                   const displayTrainerInfo = isAnyTrainerRequest 
-                    ? `Dostupní trenéři: ${trainersListString}` 
+                    ? `Dostupní trenéři: ${availableTrainersString}` 
                     : `Požadavek: ${b.trainer || 'Jakýkoliv trenér'}`;
 
                   const clientFullName = b.profiles?.first_name || b.profiles?.last_name

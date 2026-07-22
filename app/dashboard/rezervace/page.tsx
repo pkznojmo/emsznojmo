@@ -13,13 +13,21 @@ interface Reservation {
   time: string;
   trainer: string;
   status: string;
-  notes?: string; 
+  notes?: string;
+}
+
+// Pomocná funkce pro bezpečné převedení YYYY-MM-DD a HH:MM na Date objekt bez UTC/timezone posunu
+function parseReservationDateTime(dateStr: string, timeStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return new Date(year, month - 1, day, hours || 0, minutes || 0);
 }
 
 export default function ReservationsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchReservations = async (userId: string) => {
     const { data, error } = await supabase
@@ -52,7 +60,7 @@ export default function ReservationsPage() {
     const now = new Date();
     return reservations.reduce(
       (acc, res) => {
-        const resDate = new Date(`${res.date}T${res.time}`);
+        const resDate = parseReservationDateTime(res.date, res.time);
         if (resDate >= now) {
           acc.upcoming.push(res);
         } else {
@@ -65,13 +73,12 @@ export default function ReservationsPage() {
   }, [reservations]);
 
   const handleCancelReservation = async (id: string) => {
-    // Bezpečnostní kontrola přímo ve funkci pro případ vyvolání zvenčí
-    const res = reservations.find(r => r.id === id);
+    const res = reservations.find((r) => r.id === id);
     if (res) {
-      const resDate = new Date(`${res.date}T${res.time}`).getTime();
-      const now = new Date().getTime();
+      const resDate = parseReservationDateTime(res.date, res.time).getTime();
+      const now = Date.now();
       const hoursRemaining = (resDate - now) / (1000 * 60 * 60);
-      
+
       if (hoursRemaining < 24) {
         alert('Tento trénink již nelze zrušit. Rezervaci je možné stornovat nejpozději 24 hodin před jejím začátkem.');
         return;
@@ -81,13 +88,15 @@ export default function ReservationsPage() {
     const confirmCancel = confirm('Opravdu chceš zrušit tento termín tréninku?');
     if (!confirmCancel) return;
 
+    setDeletingId(id);
     const { error } = await supabase.from('reservations').delete().eq('id', id);
 
     if (!error) {
-      setReservations(reservations.filter((res) => res.id !== id));
+      setReservations((prev) => prev.filter((r) => r.id !== id));
     } else {
       alert('Chyba při rušení lekce: ' + error.message);
     }
+    setDeletingId(null);
   };
 
   if (loading) {
@@ -139,7 +148,13 @@ export default function ReservationsPage() {
             ) : (
               <div className="grid gap-4">
                 {upcoming.map((res) => (
-                  <ReservationCard key={res.id} res={res} isPast={false} onCancel={handleCancelReservation} />
+                  <ReservationCard
+                    key={res.id}
+                    res={res}
+                    isPast={false}
+                    isDeleting={deletingId === res.id}
+                    onCancel={handleCancelReservation}
+                  />
                 ))}
               </div>
             )}
@@ -168,15 +183,27 @@ export default function ReservationsPage() {
 }
 
 // Podkomponenta pro kartu rezervace
-function ReservationCard({ res, isPast, onCancel }: { res: Reservation; isPast: boolean; onCancel?: (id: string) => void }) {
+function ReservationCard({
+  res,
+  isPast,
+  isDeleting,
+  onCancel,
+}: {
+  res: Reservation;
+  isPast: boolean;
+  isDeleting?: boolean;
+  onCancel?: (id: string) => void;
+}) {
+  const dateObj = useMemo(() => parseReservationDateTime(res.date, res.time), [res.date, res.time]);
+
   // Výpočet, zda zbývá méně než 24 hodin do začátku tréninku
   const isLocked = useMemo(() => {
     if (isPast) return false;
-    const resDate = new Date(`${res.date}T${res.time}`).getTime();
-    const now = new Date().getTime();
+    const resDate = dateObj.getTime();
+    const now = Date.now();
     const hoursRemaining = (resDate - now) / (1000 * 60 * 60);
     return hoursRemaining < 24;
-  }, [res.date, res.time, isPast]);
+  }, [dateObj, isPast]);
 
   return (
     <div className={`bg-white p-6 rounded-2xl border ${isPast ? 'border-gray-200 bg-gray-50/50' : 'border-gray-200 shadow-sm hover:border-emerald-200'} transition-all`}>
@@ -185,8 +212,8 @@ function ReservationCard({ res, isPast, onCancel }: { res: Reservation; isPast: 
           {/* Datum a čas */}
           <div className="flex items-center gap-4">
             <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center text-sm font-bold ${isPast ? 'bg-gray-100 text-gray-500' : 'bg-emerald-50 text-emerald-700'}`}>
-              <span>{new Date(res.date).toLocaleDateString('cs-CZ', { day: 'numeric' })}</span>
-              <span className="uppercase text-[10px]">{new Date(res.date).toLocaleDateString('cs-CZ', { month: 'short' })}</span>
+              <span>{dateObj.getDate()}</span>
+              <span className="uppercase text-[10px]">{dateObj.toLocaleDateString('cs-CZ', { month: 'short' })}</span>
             </div>
             <div>
               <div className="flex items-center gap-2 font-bold text-gray-900">
@@ -208,7 +235,7 @@ function ReservationCard({ res, isPast, onCancel }: { res: Reservation; isPast: 
             </div>
           </div>
 
-          {/* Poznámka (pokud existuje) */}
+          {/* Poznámka */}
           {res.notes && (
             <div className="flex items-start gap-2 max-w-xs bg-amber-50/50 p-2 rounded-lg border border-amber-100/50">
               <Pen size={14} className="text-amber-600 mt-0.5 shrink-0" />
@@ -229,7 +256,7 @@ function ReservationCard({ res, isPast, onCancel }: { res: Reservation; isPast: 
                 Potvrzeno
               </span>
               {isLocked ? (
-                <div 
+                <div
                   className="p-2.5 text-gray-400 bg-gray-50 border border-gray-200/60 rounded-xl cursor-not-allowed select-none"
                   title="Lekci již nelze zrušit (méně než 24h do začátku)"
                 >
@@ -237,8 +264,9 @@ function ReservationCard({ res, isPast, onCancel }: { res: Reservation; isPast: 
                 </div>
               ) : (
                 <button
+                  disabled={isDeleting}
                   onClick={() => onCancel?.(res.id)}
-                  className="p-2.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                  className="p-2.5 text-red-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 rounded-xl transition-colors"
                   title="Zrušit lekci"
                 >
                   <Trash2 size={20} />
