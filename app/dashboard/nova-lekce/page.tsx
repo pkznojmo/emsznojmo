@@ -9,7 +9,13 @@ import { supabase } from '../../../lib/supabase';
 interface DbTrainer { id: string; first_name: string; last_name: string; email?: string; }
 interface TrainerAvailability { trainer_id: string; day_of_week: number; start_time: string; end_time: string; }
 interface TrainerException { trainer_id: string; date: string; start_time: string; end_time: string; type: 'AVAILABLE' | 'UNAVAILABLE'; }
-interface ExistingReservation { trainer_id: string | null; date: string; time: string; }
+interface ExistingReservation { trainer_id: string | null; date: string; time: string; user_id?: string; }
+
+// Pomocná funkce pro převod času "HH:MM" na celkový počet minut
+const timeToMinutes = (timeStr: string): number => {
+  const [hours, minutes] = timeStr.trim().split(':').map(Number);
+  return hours * 60 + minutes;
+};
 
 const calculateEndTime = (startTime: string): string => {
   const [hours, minutes] = startTime.split(':').map(Number);
@@ -26,6 +32,32 @@ const calculateEndTime = (startTime: string): string => {
   return `${hStr}:${mStr}`;
 };
 
+// Pomocná funkce pro posun času o 30 min dopředu (např. "09:00" -> "09:30")
+const getNextTimeSlot = (time: string): string => {
+  const [hours, minutes] = time.split(':').map(Number);
+  let nextMinutes = minutes + 30;
+  let nextHours = hours;
+  if (nextMinutes >= 60) {
+    nextMinutes -= 60;
+    nextHours += 1;
+  }
+  return `${nextHours.toString().padStart(2, '0')}:${nextMinutes.toString().padStart(2, '0')}`;
+};
+
+// Funkce pro výpočet konce tréninku pro 1. trénink (trvá 1 hodinu / 2 bloky)
+const calculateFirstLessonEndTime = (startTime: string): string => {
+  const [hours, minutes] = startTime.split(':').map(Number);
+  let endMinutes = minutes + 60;
+  let endHours = hours;
+  
+  while (endMinutes >= 60) {
+    endMinutes -= 60;
+    endHours += 1;
+  }
+  
+  return `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+};
+
 export default function NewLessonPage() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
@@ -38,6 +70,7 @@ export default function NewLessonPage() {
   const [availabilities, setAvailabilities] = useState<TrainerAvailability[]>([]);
   const [exceptions, setExceptions] = useState<TrainerException[]>([]);
   const [existingReservations, setExistingReservations] = useState<ExistingReservation[]>([]);
+  const [userHasPreviousReservations, setUserHasPreviousReservations] = useState(false);
   
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
@@ -110,13 +143,18 @@ export default function NewLessonPage() {
         supabase.from('profiles').select('id, first_name, last_name, email').eq('role', 'TRAINER'),
         supabase.from('trainer_availability').select('*'),
         supabase.from('trainer_exceptions').select('*'),
-        supabase.from('reservations').select('trainer_id, date, time').in('status', ['CONFIRMED', 'PENDING'])
+        supabase.from('reservations').select('trainer_id, date, time, user_id').in('status', ['CONFIRMED', 'PENDING'])
       ]);
 
       if (t.data) setTrainers(t.data);
       if (a.data) setAvailabilities(a.data);
       if (e.data) setExceptions(e.data);
-      if (r.data) setExistingReservations(r.data);
+      if (r.data) {
+        setExistingReservations(r.data);
+        // Zjistíme, jestli má přihlášený uživatel nějaké minulé/existující rezervace
+        const userResCount = r.data.filter(res => res.user_id === authUser.id).length;
+        setUserHasPreviousReservations(userResCount > 0);
+      }
     };
     initializePage();
   }, [router]);
@@ -138,7 +176,11 @@ export default function NewLessonPage() {
     const dayInfo = upcomingDays.find(d => d.isoString === selectedDate);
     if (!dayInfo) return [];
 
-    return ALL_TIME_SLOTS.map(slot => {
+    // Pomocná funkce pro ověření jednoho konkrétního slotu (např. "06:00" nebo "06:30")
+    const checkSlotValidity = (slot: string) => {
+      const slotStartMin = timeToMinutes(slot);
+      const slotEndMin = slotStartMin + 30;
+
       const workingTrainers = trainers.filter(t => {
         const hasAvailability = availabilities.some(a => a.trainer_id === t.id && a.day_of_week === dayInfo.dayOfWeek && isTimeBetween(slot, a.start_time, a.end_time));
         const hasExtra = exceptions.some(e => e.trainer_id === t.id && e.date === selectedDate && e.type === 'AVAILABLE' && isTimeBetween(slot, e.start_time, e.end_time));
@@ -146,27 +188,80 @@ export default function NewLessonPage() {
         return (hasAvailability || hasExtra) && !isUnavailable;
       });
 
-      const reservationsAtSlot = existingReservations.filter(r => r.date === selectedDate && (r.time === slot || r.time.startsWith(slot)));
+      // Kontrola překryvu s existujícími rezervacemi (převedeno na časové rozmezí)
+      const reservationsAtSlot = existingReservations.filter(r => {
+        if (r.date !== selectedDate) return false;
+
+        // Pokud je r.time např. "06:00 - 07:00", nebo jen "06:00"
+        let resStartMin = 0;
+        let resEndMin = 0;
+
+        if (r.time.includes('-')) {
+          const [s, e] = r.time.split('-');
+          resStartMin = timeToMinutes(s);
+          resEndMin = timeToMinutes(e);
+        } else {
+          resStartMin = timeToMinutes(r.time);
+          resEndMin = resStartMin + 30; // Výchozí délka slotu
+        }
+
+        // Dva časové intervaly se překrývají, pokud: Start1 < End2 AND End1 > Start2
+        return slotStartMin < resEndMin && slotEndMin > resStartMin;
+      });
+
       const isRoomOccupied = reservationsAtSlot.length > 0;
 
-      let isSlotUnavailable = false;
-
+      let isUnavailable = false;
       if (isRoomOccupied) {
-        isSlotUnavailable = true;
+        isUnavailable = true;
       } else if (selectedTrainer === 'Jakýkoliv trenér') {
-        if (workingTrainers.length === 0) isSlotUnavailable = true;
+        if (workingTrainers.length === 0) isUnavailable = true;
       } else {
         const isWorking = workingTrainers.some(t => t.id === selectedTrainer);
-        if (!isWorking) isSlotUnavailable = true;
+        if (!isWorking) isUnavailable = true;
+      }
+
+      return { isUnavailable, workingTrainers };
+    };
+
+    return ALL_TIME_SLOTS.map(slot => {
+      const firstSlotCheck = checkSlotValidity(slot);
+
+      let finalIsUnavailable = firstSlotCheck.isUnavailable;
+      let availableTrainers = firstSlotCheck.workingTrainers;
+
+      // KDYŽ JE TO PRVNÍ TRÉNINK (uživatel nemá historii rezervací), potřebujeme 2 bloky za sebou!
+      if (!userHasPreviousReservations && !finalIsUnavailable) {
+        const nextSlot = getNextTimeSlot(slot);
+        const secondSlotCheck = checkSlotValidity(nextSlot);
+
+        // Pokud následující slot neexistuje (např. konec otevírací doby) nebo je obsazený/nedostupný
+        if (secondSlotCheck.isUnavailable) {
+          finalIsUnavailable = true;
+        } else if (selectedTrainer === 'Jakýkoliv trenér') {
+          // Průnik trenérů, kteří mohou v obou blocích
+          availableTrainers = firstSlotCheck.workingTrainers.filter(t1 => 
+            secondSlotCheck.workingTrainers.some(t2 => t2.id === t1.id)
+          );
+          if (availableTrainers.length === 0) {
+            finalIsUnavailable = true;
+          }
+        } else {
+          // Ověříme, jestli vybraný trenér může i v dalším bloku
+          const canDoBoth = secondSlotCheck.workingTrainers.some(t => t.id === selectedTrainer);
+          if (!canDoBoth) {
+            finalIsUnavailable = true;
+          }
+        }
       }
 
       return { 
         time: slot, 
-        isUnavailable: isSlotUnavailable, 
-        availableTrainers: isRoomOccupied ? [] : workingTrainers 
+        isUnavailable: finalIsUnavailable, 
+        availableTrainers: finalIsUnavailable ? [] : availableTrainers 
       };
     });
-  }, [selectedDate, selectedTrainer, trainers, availabilities, exceptions, existingReservations, upcomingDays]);
+  }, [selectedDate, selectedTrainer, trainers, availabilities, exceptions, existingReservations, upcomingDays, userHasPreviousReservations, ALL_TIME_SLOTS]);
 
   const isSelectedDateToday = useMemo(() => upcomingDays.find(d => d.isoString === selectedDate)?.isToday || false, [selectedDate, upcomingDays]);
   const intentToBookTodayOrPast = useMemo(() => {
@@ -174,7 +269,6 @@ export default function NewLessonPage() {
     return day ? (day.isToday || day.isPast) : false;
   }, [selectedDate, upcomingDays]);
 
-  // NOVÁ ODESÍLACÍ LOGIKA PŘES API ROUTE /api/reservations
   const handleBooking = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!selectedTime || !selectedDate || !userId || intentToBookTodayOrPast) return;
@@ -190,8 +284,6 @@ export default function NewLessonPage() {
 
       let targetTrainerId: string | null = null;
       let trainerFullName = 'Jakýkoliv trenér';
-      
-      // Pole e-mailů pro trenéry, kterým má e-mail odejít
       let trainerEmails: string[] = [];
 
       if (selectedTrainer !== 'Jakýkoliv trenér') {
@@ -202,7 +294,6 @@ export default function NewLessonPage() {
           if (t.email) trainerEmails.push(t.email);
         }
       } else {
-        // Všichni trenéři dostanou e-mail
         trainerEmails = trainers
           .map(t => t.email)
           .filter((email): email is string => Boolean(email));
@@ -211,7 +302,11 @@ export default function NewLessonPage() {
       const customerFullName = `${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim() || 'Klient EMS';
       const customerEmail = userProfile?.email || '';
 
-      // Volání tvého serverového API
+      // Výpočet časového rozsahu (pro 1. trénink 1 hodina, pro další klasicky 30 min)
+      const formattedTimeRange = userHasPreviousReservations 
+        ? `${selectedTime} - ${calculateEndTime(selectedTime)}`
+        : `${selectedTime} - ${calculateFirstLessonEndTime(selectedTime)}`;
+
       const res = await fetch('/api/reservations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -219,12 +314,12 @@ export default function NewLessonPage() {
           user_id: userId,
           trainer_id: targetTrainerId,
           date: selectedDate,
-          time: `${selectedTime} - ${calculateEndTime(selectedTime)}`,
+          time: formattedTimeRange,
           trainerName: trainerFullName,
-          trainerEmails: trainerEmails, // Posíláme pole e-mailů!
+          trainerEmails: trainerEmails,
           customerName: customerFullName,
           customerEmail: customerEmail,
-          serviceName: 'EMS Trénink',
+          serviceName: userHasPreviousReservations ? 'EMS Trénink' : 'První vstupní EMS trénink',
         }),
       });
 
@@ -253,7 +348,11 @@ export default function NewLessonPage() {
       <main className="flex-1 p-4 md:p-10 max-w-5xl mx-auto w-full">
         <header className="mb-6 md:mb-8">
           <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900">Rezervace tréninku ⚡</h1>
-          <p className="text-sm text-gray-500">Vyber si svůj čas a trenéra.</p>
+          <p className="text-sm text-gray-500">
+            {!userHasPreviousReservations 
+              ? 'Jelikož je to váš první trénink, systém automaticky vybírá 1hodinový blok pro zaškolení a smlouvy.' 
+              : 'Vyber si svůj čas a trenéra.'}
+          </p>
           {error && <p className="text-red-500 font-bold mt-2 text-sm">{error}</p>}
         </header>
 
@@ -346,6 +445,7 @@ export default function NewLessonPage() {
           </section>
 
           {/* 3. DOSTUPNÁ OKNA */}
+          {/* 3. DOSTUPNÁ OKNA */}
           <section>
             <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
               <Clock size={14} /> 3. Dostupná okna
@@ -363,6 +463,11 @@ export default function NewLessonPage() {
                 const isSelected = selectedTime === s.time;
                 const showAsAvailable = !s.isUnavailable;
 
+                // Zobrazení rozsahu (pro 1. trénink ukážeme rovnou hodinu, jinak 30 min)
+                const displayEndTime = userHasPreviousReservations 
+                  ? calculateEndTime(s.time) 
+                  : calculateFirstLessonEndTime(s.time);
+
                 return (
                   <div 
                     key={s.time}
@@ -379,15 +484,23 @@ export default function NewLessonPage() {
                     `}
                   >
                     <div className={`font-bold text-sm md:text-base mb-0.5 ${!showAsAvailable ? 'text-gray-400' : isSelected ? 'text-white' : 'text-gray-900'}`}>
-                      {s.time} – {calculateEndTime(s.time)}
+                      {s.time} – {displayEndTime}
                     </div>
                     
+                    {/* Zobrazení jmen, pokud je vybrán "Jakýkoliv trenér" */}
                     {selectedTrainer === 'Jakýkoliv trenér' && showAsAvailable && (
-                      <div className={`text-[8px] md:text-[9px] uppercase tracking-tighter truncate ${isSelected ? 'text-emerald-100' : 'text-green-600'}`}>
+                      <div className={`text-[8px] md:text-[9px] uppercase tracking-tighter truncate font-bold ${isSelected ? 'text-emerald-100' : 'text-emerald-600'}`}>
                         {s.availableTrainers
                           .map(t => `${t.first_name || ''} ${t.last_name || ''}`.trim())
                           .filter(Boolean)
                           .join(', ')}
+                      </div>
+                    )}
+
+                    {/* Zobrazení textu "Volno", pokud je vybrán konkrétní trenér */}
+                    {selectedTrainer !== 'Jakýkoliv trenér' && showAsAvailable && !isSelectedDateToday && (
+                      <div className={`text-[8px] md:text-[9px] uppercase font-extrabold tracking-wider ${isSelected ? 'text-emerald-100' : 'text-emerald-600'}`}>
+                        Volno
                       </div>
                     )}
                     

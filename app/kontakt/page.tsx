@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowLeft, Phone, Mail, MapPin, Clock, Calendar, ShieldCheck, Award, Heart, UserCheck } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Clock, Calendar, ShieldCheck, Award, Heart, UserCheck, Waves, Car, CheckCircle2 } from 'lucide-react';
 
 export default function ContactPage() {
   
@@ -50,7 +50,7 @@ export default function ContactPage() {
         </div>
       </section>
 
-      {/* --- PR SEKCE: TRENÉŘI (Tady budujeme silné PR) --- */}
+      {/* --- PR SEKCE: TRENÉŘI --- */}
       <section className="w-full py-12 px-6">
         <div className="max-w-6xl mx-auto space-y-12">
           
@@ -65,7 +65,7 @@ export default function ContactPage() {
             </p>
           </div>
 
-          {/* Mřížka se 4 trenéry */}
+          {/* Mřížka se 3 trenéry */}
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3 items-stretch">
             {trainers.map((trainer) => (
               <div 
@@ -73,7 +73,6 @@ export default function ContactPage() {
                 className="bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col justify-between hover:shadow-lg hover:border-slate-300 transition-all group"
               >
                 <div>
-                  {/* Prostor pro fotku trenéra s jemným overlay efektem */}
                   <div className="relative aspect-[4/5] w-full bg-slate-100 overflow-hidden">
                     <img 
                       src={trainer.image} 
@@ -83,7 +82,6 @@ export default function ContactPage() {
                     <div className="absolute inset-0 bg-gradient-to-t from-[#1E388C]/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
 
-                  {/* Detaily a texty */}
                   <div className="p-5 space-y-3">
                     <div className="space-y-1">
                       <h3 className="font-black text-[#1E388C] text-lg leading-tight uppercase">{trainer.name}</h3>
@@ -115,7 +113,56 @@ export default function ContactPage() {
         </div>
       </section>
 
-      {/* --- PRAKTICKÉ KONTAKTNÍ ÚDAJE + OTEVÍRACÍ DOBA (Full-width šedé pozadí) --- */}
+      {/* --- Kde trénujeme + Fotka Areálu Bazénu Louka --- */}
+      <section className="w-full bg-slate-900 text-white py-16 px-6 relative overflow-hidden">
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-12 gap-8 items-center">
+          
+          <div className="lg:col-span-5 space-y-6">
+            <span className="text-xs font-bold text-[#73C2BE] uppercase tracking-widest block">Naše zázemí</span>
+            <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
+              Studio v budově bazénu Louka
+            </h2>
+            <p className="text-slate-300 text-sm leading-relaxed">
+              Naše EMS tělocvična sídlí přímo v  budově plaveckého bazénu ve Znojmě. Nabízíme čisté, moderní prostředí s vynikající dostupností a možností spojit trénink s dalšími aktivitami.
+            </p>
+            
+            <ul className="space-y-3 text-xs text-slate-200">
+              <li className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-[#73C2BE]" />
+                <span>Bezproblémové parkování přímo před budovou</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-[#73C2BE]" />
+                <span>Vstup do studia přímo z vestibulu bazénu</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-[#73C2BE]" />
+                <span>Plně vybavené zázemí a šatny</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Fotka bazénu / budovy */}
+          <div className="lg:col-span-7 relative rounded-2xl overflow-hidden shadow-2xl border border-slate-700 aspect-[16/10]">
+            <img 
+              src="/Bazen.jpeg" /* Nahraď reálnou cestou k fotce bazénu */
+              alt="Městský plavecký stadion Znojmo - Louka" 
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
+            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-xs bg-slate-900/80 backdrop-blur-md p-3 rounded-xl border border-white/10">
+              <div className="flex items-center gap-2">
+                <Waves size={16} className="text-[#73C2BE]" />
+                <span className="font-medium text-slate-200"> Bazén Louka Znojmo</span>
+              </div>
+              <span className="text-[10px] bg-[#1E388C] px-2 py-0.5 rounded text-white font-bold uppercase">Tělocvična v 1. patře</span>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      {/* --- PRAKTICKÉ KONTAKTNÍ ÚDAJE + OTEVÍRACÍ DOBA --- */}
       <section className="w-full bg-slate-50 border-t border-b border-slate-100 py-16 px-6">
         <div className="max-w-6xl mx-auto grid gap-12 md:grid-cols-2 items-start">
           
@@ -136,8 +183,8 @@ export default function ContactPage() {
                 </div>
                 <div>
                   <h4 className="font-bold text-[#1E388C] uppercase text-xs tracking-wider">Adresa Studia</h4>
-                  <p className="text-slate-700 font-medium mt-0.5">Melkusova 44, 669 02 Znojmo</p>
-                  <p className="text-slate-400 text-xs">(Tělocvična na bazénu Louka))</p>
+                  <p className="text-slate-700 font-medium mt-0.5">Melkusova 44, 671 81 Znojmo</p>
+                  <p className="text-slate-400 text-xs">(Tělocvična v budově bazénu Louka)</p>
                 </div>
               </div>
 
@@ -170,7 +217,7 @@ export default function ContactPage() {
             <div className="pt-4 border-t border-slate-200/60 text-[11px] text-slate-400 space-y-1">
               <p className="font-bold text-slate-500">Provozní informace:</p>
               <p>Provozovatel: Plavecký klub Znojmo z.s.</p>
-              <p>IČO: </p>
+              <p>IČO: 06441254</p>
             </div>
           </div>
 
@@ -192,7 +239,7 @@ export default function ContactPage() {
               </div>
               <div className="flex justify-between py-1.5 text-slate-400">
                 <span>Svátky</span>
-                <span className="italic text-xs font-semibold uppercase tracking-wider bg-slate-50 px-2 py-0.5 rounded">Zavřeno</span>
+                <span className="italic text-xs font-semibold uppercase tracking-wider bg-slate-50 px-2 py-0.5 rounded">Dle domluvy</span>
               </div>
             </div>
 
@@ -205,7 +252,7 @@ export default function ContactPage() {
         </div>
       </section>
 
-      {/* --- MAPA / CALL TO ACTION (Full-width modrý přechod) --- */}
+      {/* --- CALL TO ACTION --- */}
       <section className="w-full bg-gradient-to-br from-[#1E388C] to-[#2986BF] text-white py-16 px-6 text-center relative overflow-hidden">
         <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-[#73C2BE]/20 rounded-full blur-2xl" />
         
