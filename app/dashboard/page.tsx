@@ -293,23 +293,23 @@ export default function DashboardPage() {
             <div className="bg-white p-6 rounded-2xl border border-gray-200/80 shadow-sm space-y-4">
               <h3 className="font-semibold text-gray-900 text-sm">Stav členství</h3>
               
-              <div className="bg-emerald-50/60 border border-emerald-100 p-4 rounded-xl space-y-2">
-                <div className="flex justify-between items-center text-xs text-emerald-900 font-medium">
+              <div className="bg-red-50/60 border border-red-100 p-4 rounded-xl space-y-2">
+                <div className="flex justify-between items-center text-xs text-red-900 font-medium">
                   <span>Balíček EMS Tréninků</span>
-                  <span className="bg-emerald-200/60 px-2 py-0.5 rounded text-[10px]">Aktivní</span>
+                  <span className="bg-red-200/60 px-2 py-0.5 rounded text-[10px]">Neaktivní</span>
                 </div>
-                <div className="text-2xl font-bold text-emerald-900">
-                  12 <span className="text-xs font-normal text-emerald-700">/ 20 lekcí</span>
+                <div className="text-2xl font-bold text-red-900">
+                  0 <span className="text-xs font-normal text-red-700">/ 0 lekcí</span>
                 </div>
-                <div className="w-full bg-emerald-200/50 rounded-full h-2 overflow-hidden mt-2">
-                  <div className="bg-emerald-600 h-2 rounded-full" style={{ width: '60%' }}></div>
+                <div className="w-full bg-red-200/50 rounded-full h-2 overflow-hidden mt-2">
+                  <div className="bg-red-600 h-2 rounded-full" style={{ width: '0%' }}></div>
                 </div>
               </div>
 
               <div className="text-xs text-gray-500 space-y-1.5 pt-1">
                 <div className="flex justify-between">
                   <span>Platnost do:</span>
-                  <strong className="text-gray-700">31. 12. 2026</strong>
+                  <strong className="text-gray-700">21.9.2017</strong>
                 </div>
                 <div className="flex justify-between">
                   <span>Předplatné:</span>

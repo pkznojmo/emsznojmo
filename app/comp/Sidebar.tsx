@@ -50,7 +50,7 @@ export default function Sidebar({ onLogout }: SidebarProps) {
 
   const trainerLinks = [
     { href: "/dashboard/pravidelny-rozvrh", label: "Pravidelný Rozvrh", icon: Clock },
-    { href: "/dashboard/tydenni-rozvrh", label: "Týdenní Rozvrh", icon: CalendarDays },
+    { href: "/dashboard/tydenni-rozvrh", label: "Výjimky - Rozvrh", icon: CalendarDays },
     { href: "/dashboard/klienti", label: "Klienti", icon: Users },
   ];
 

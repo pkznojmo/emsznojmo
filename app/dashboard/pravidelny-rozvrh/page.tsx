@@ -6,13 +6,11 @@ import Sidebar from '../../comp/Sidebar';
 import { Clock, Check, Info } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
-
 const DAYS_ORDER = [1, 2, 3, 4, 5, 6, 0]; 
 const DAYS_NAMES: { [key: number]: string } = {
   1: 'Pondělí', 2: 'Úterý', 3: 'Středa', 4: 'Čtvrtek', 5: 'Pátek', 6: 'Sobota', 0: 'Neděle'
 };
 
-// Generátor 26 časových slotů (06:00 až 18:30 -> pokrývá čas do 19:00)
 const GENERATED_SLOTS = (() => {
   const slots = [];
   for (let hour = 6; hour <= 18; hour++) {
@@ -30,39 +28,46 @@ export default function RegularSchedulePage() {
   const [regularHours, setRegularHours] = useState<any[]>([]);
 
   const fetchData = async (id: string) => {
-    const { data: reg } = await supabase
+    const { data: reg, error } = await supabase
       .from('trainer_availability')
       .select('*')
       .eq('trainer_id', id);
     
-    if (reg) setRegularHours(reg);
+    if (error) {
+      console.error('Chyba při načítání rozvrhu:', error.message);
+    } else if (reg) {
+      setRegularHours(reg);
+    }
     setLoading(false);
   };
 
   useEffect(() => {
     const checkTrainer = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) {
         router.push('/prihlaseni');
         return;
       }
-      const { data: profile } = await supabase
+
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .single();
 
-      if (!profile || profile.role !== 'TRAINER') {
+      if (profileError || !profile || profile.role !== 'TRAINER') {
         router.push('/dashboard');
         return;
       }
+
       setTrainerId(user.id);
       fetchData(user.id);
     };
+
     checkTrainer();
   }, [router]);
 
-  // Pomocná funkce pro výpočet konce slotu (+30 min)
   const getEndTime = (startTime: string) => {
     const [h, m] = startTime.split(':').map(Number);
     const endM = m + 30;
@@ -71,19 +76,28 @@ export default function RegularSchedulePage() {
     return `${endH.toString().padStart(2, '0')}:${endMStr}`;
   };
 
-  // Kliknutí na políčko (Přidat / Smazat ze šablony)
-  const handleRegularClick = async (dayOfWeek: number, slotTime: string, isWorking: boolean) => {
+  const handleRegularClick = async (dayOfWeek: number, slotTime: string) => {
     if (!trainerId) return;
 
-    if (isWorking) {
-      await supabase
+    // Najdeme, zda už konkrétní slot existuje v databázi
+    const existingSlot = regularHours.find(
+      r => r.day_of_week === dayOfWeek && r.start_time === slotTime
+    );
+
+    if (existingSlot) {
+      // Mazání přímo přes primární klíč ID
+      const { error } = await supabase
         .from('trainer_availability')
         .delete()
-        .eq('trainer_id', trainerId)
-        .eq('day_of_week', dayOfWeek)
-        .eq('start_time', slotTime);
+        .eq('id', existingSlot.id);
+
+      if (error) {
+        console.error('Chyba při mazání slotu:', error.message);
+        alert(`Nepodařilo se smazat: ${error.message}`);
+      }
     } else {
-      await supabase
+      // Vložení nového slotu
+      const { error } = await supabase
         .from('trainer_availability')
         .insert([{
           trainer_id: trainerId,
@@ -91,8 +105,15 @@ export default function RegularSchedulePage() {
           start_time: slotTime,
           end_time: getEndTime(slotTime)
         }]);
+
+      if (error) {
+        console.error('Chyba při ukládání slotu:', error.message);
+        alert(`Nepodařilo se uložit: ${error.message}`);
+      }
     }
-    fetchData(trainerId);
+
+    // Obnovit data ze serveru
+    await fetchData(trainerId);
   };
 
   if (loading) {
@@ -116,7 +137,6 @@ export default function RegularSchedulePage() {
         </header>
 
         <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
-          {/* Informační banner */}
           <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-xl flex items-start gap-3 text-sm text-emerald-800">
             <Info size={20} className="shrink-0 mt-0.5 text-emerald-600" />
             <div>
@@ -124,17 +144,14 @@ export default function RegularSchedulePage() {
             </div>
           </div>
 
-          {/* Legenda */}
           <div className="flex gap-4 text-xs font-bold text-gray-500 px-1">
             <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-emerald-500" /> Standardně pracuji</div>
             <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-gray-100 border border-gray-200" /> Volno / Nedostupno</div>
           </div>
 
-          {/* Časová matice */}
           <div className="overflow-x-auto min-w-full pt-2">
             <div className="inline-block min-w-[900px] w-full">
               
-              {/* Hlavička s hodinami */}
               <div className="flex items-center mb-1 text-[10px] font-bold text-gray-400 text-center">
                 <div className="w-28 shrink-0 text-left pl-2">Den v týdnu</div>
                 <div className="flex-1 flex">
@@ -146,26 +163,23 @@ export default function RegularSchedulePage() {
                 </div>
               </div>
 
-              {/* 7 řádků pro dny v týdnu */}
               <div className="space-y-2">
                 {DAYS_ORDER.map(dayNum => (
                   <div key={dayNum} className="flex items-center group">
-                    {/* Název dne */}
                     <div className="w-28 shrink-0 font-bold text-sm text-gray-600 group-hover:text-gray-900 transition">
                       {DAYS_NAMES[dayNum]}
                     </div>
                     
-                    {/* Časová osa dne bez mezer */}
                     <div className="flex-1 flex h-12 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50">
                       {GENERATED_SLOTS.map(slot => {
                         const isWorking = regularHours.some(
-                          r => r.day_of_week === dayNum && slot >= r.start_time && slot < r.end_time
+                          r => r.day_of_week === dayNum && r.start_time === slot
                         );
 
                         return (
                           <div
                             key={slot}
-                            onClick={() => handleRegularClick(dayNum, slot, isWorking)}
+                            onClick={() => handleRegularClick(dayNum, slot)}
                             className={`flex-1 cursor-pointer border-r border-gray-200/40 last:border-0 transition-all flex flex-col items-center justify-center text-[8px] font-medium select-none ${
                               isWorking 
                                 ? 'bg-emerald-500 hover:bg-emerald-600 text-white' 

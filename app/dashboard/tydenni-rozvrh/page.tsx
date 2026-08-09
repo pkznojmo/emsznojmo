@@ -6,12 +6,10 @@ import Sidebar from '../../comp/Sidebar';
 import { Calendar as CalendarIcon, Info, StepBack, StepForward } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
-
 const DAYS_NAMES: { [key: number]: string } = {
   1: 'Pondělí', 2: 'Úterý', 3: 'Středa', 4: 'Čtvrtek', 5: 'Pátek', 6: 'Sobota', 0: 'Neděle'
 };
 
-// Generátor 26 časových slots (06:00 až 18:30 -> pokrývá čas do 19:00)
 const GENERATED_SLOTS = (() => {
   const slots = [];
   for (let hour = 6; hour <= 18; hour++) {
@@ -22,20 +20,16 @@ const GENERATED_SLOTS = (() => {
   return slots;
 })();
 
-// Pomocná funkce pro získání pondělí až neděle na základě offsetu týdnů
 const getWeekDays = (weekOffset = 0) => {
   const days = [];
   const options: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'numeric' };
   
   const today = new Date();
-  
-  // BEZPEČNÉ ZÍSKÁNÍ LOKÁLNÍHO DATUMU (YYYY-MM-DD) bez posunu časového pásma
   const yyyy = today.getFullYear();
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const dd = String(today.getDate()).padStart(2, '0');
   const todayISO = `${yyyy}-${mm}-${dd}`;
   
-  // Zjistíme pondělí aktuálního týdne (v JS: 0 = neděle, 1 = pondělí...)
   const currentDay = today.getDay();
   const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
   
@@ -46,7 +40,6 @@ const getWeekDays = (weekOffset = 0) => {
     const d = new Date(monday.getTime());
     d.setDate(d.getDate() + i);
     
-    // Generování ISO stringu pro dny v cyklu bez posunu časového pásma
     const dY = d.getFullYear();
     const dM = String(d.getMonth() + 1).padStart(2, '0');
     const dD = String(d.getDate()).padStart(2, '0');
@@ -66,18 +59,27 @@ export default function WeeklySchedulePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [trainerId, setTrainerId] = useState<string | null>(null);
-  const [weekOffset, setWeekOffset] = useState(0); // 0 = tento týden, 1 = příští, -1 = minulý...
+  const [weekOffset, setWeekOffset] = useState(0);
 
-  // Stavy pro data z DB
   const [regularHours, setRegularHours] = useState<any[]>([]);
   const [exceptions, setExceptions] = useState<any[]>([]);
 
-  // Pole 7 dní od pondělí do neděle pro zvolený týden
   const currentWeekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
 
   const fetchData = async (id: string) => {
-    const { data: reg } = await supabase.from('trainer_availability').select('*').eq('trainer_id', id);
-    const { data: exc } = await supabase.from('trainer_exceptions').select('*').eq('trainer_id', id);
+    const { data: reg, error: regErr } = await supabase
+      .from('trainer_availability')
+      .select('*')
+      .eq('trainer_id', id);
+
+    const { data: exc, error: excErr } = await supabase
+      .from('trainer_exceptions')
+      .select('*')
+      .eq('trainer_id', id);
+
+    if (regErr) console.error('Chyba načítání šablony:', regErr.message);
+    if (excErr) console.error('Chyba načítání výjimek:', excErr.message);
+
     if (reg) setRegularHours(reg);
     if (exc) setExceptions(exc);
     setLoading(false);
@@ -85,23 +87,30 @@ export default function WeeklySchedulePage() {
 
   useEffect(() => {
     const checkTrainer = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { user }, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !user) {
         router.push('/prihlaseni');
         return;
       }
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-      if (!profile || profile.role !== 'TRAINER') {
+      
+      const { data: profile, error: profErr } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      if (profErr || !profile || profile.role !== 'TRAINER') {
         router.push('/dashboard');
         return;
       }
+
       setTrainerId(user.id);
       fetchData(user.id);
     };
+
     checkTrainer();
   }, [router]);
 
-  // Pomocná funkce pro výpočet konce slotu (+30 min)
   const getEndTime = (startTime: string) => {
     const [h, m] = startTime.split(':').map(Number);
     const endM = m + 30;
@@ -110,37 +119,57 @@ export default function WeeklySchedulePage() {
     return `${endH.toString().padStart(2, '0')}:${endMStr}`;
   };
 
-  // Správa kliknutí na operační timeline
-  const handleExceptionClick = async (dateStr: string, slotTime: string, currentStatus: 'REGULAR_WORKING' | 'EXTRA_WORKING' | 'BLOCKED' | 'OFF') => {
+  const handleExceptionClick = async (
+    dateStr: string, 
+    slotTime: string, 
+    currentStatus: 'REGULAR_WORKING' | 'EXTRA_WORKING' | 'BLOCKED' | 'OFF'
+  ) => {
     if (!trainerId) return;
 
-    const existingException = exceptions.find(e => e.date === dateStr && e.start_time === slotTime);
+    const existingException = exceptions.find(
+      e => e.date === dateStr && e.start_time === slotTime
+    );
 
     if (existingException) {
-      // Smazáním stávající výjimky vrátíme původní stav ze šablony
-      await supabase.from('trainer_exceptions').delete().eq('id', existingException.id);
+      // Mazání podle ID
+      const { error } = await supabase
+        .from('trainer_exceptions')
+        .delete()
+        .eq('id', existingException.id);
+
+      if (error) {
+        console.error('Chyba při mazání výjimky:', error.message);
+        alert(`Chyba při mazání: ${error.message}`);
+      }
     } else {
-      // Vytváříme novou výjimku na základě aktuálního stavu:
-      // Pokud byla zelená (REGULAR_WORKING) -> chceme červené volno (UNAVAILABLE)
-      // Pokud byla šedá (OFF) -> chceme modrou práci navíc (AVAILABLE)
+      // Nová výjimka
       const newType = currentStatus === 'REGULAR_WORKING' ? 'UNAVAILABLE' : 'AVAILABLE';
       
-      await supabase.from('trainer_exceptions').insert([{
-        trainer_id: trainerId,
-        date: dateStr,
-        start_time: slotTime,
-        end_time: getEndTime(slotTime),
-        type: newType
-      }]);
+      const { error } = await supabase
+        .from('trainer_exceptions')
+        .insert([{
+          trainer_id: trainerId,
+          date: dateStr,
+          start_time: slotTime,
+          end_time: getEndTime(slotTime),
+          type: newType
+        }]);
+
+      if (error) {
+        console.error('Chyba při ukládání výjimky:', error.message);
+        alert(`Chyba při ukládání: ${error.message}`);
+      }
     }
-    fetchData(trainerId);
+
+    await fetchData(trainerId);
   };
 
-  // Výpočet výsledné matice (Zrcadlení šablony + aplikace výjimek)
   const calculatedDaysMatrix = useMemo(() => {
     return currentWeekDays.map(day => {
       const slots = GENERATED_SLOTS.map(slot => {
-        const dayException = exceptions.find(e => e.date === day.isoString && slot >= e.start_time && slot < e.end_time);
+        const dayException = exceptions.find(
+          e => e.date === day.isoString && slot >= e.start_time && slot < e.end_time
+        );
         
         if (dayException) {
           return {
@@ -149,7 +178,10 @@ export default function WeeklySchedulePage() {
           };
         }
         
-        const isRegularWork = regularHours.some(r => r.day_of_week === day.dayOfWeek && slot >= r.start_time && slot < r.end_time);
+        const isRegularWork = regularHours.some(
+          r => r.day_of_week === day.dayOfWeek && slot >= r.start_time && slot < r.end_time
+        );
+
         return {
           time: slot,
           status: isRegularWork ? 'REGULAR_WORKING' : 'OFF'
@@ -181,7 +213,6 @@ export default function WeeklySchedulePage() {
             </p>
           </div>
 
-          {/* Přepínač týdnů */}
           <div className="flex bg-white rounded-xl shadow-sm border border-gray-200 p-1 select-none items-center self-start md:self-auto">
             <button 
               onClick={() => setWeekOffset(prev => prev - 1)} 
@@ -205,7 +236,6 @@ export default function WeeklySchedulePage() {
 
         <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
 
-          {/* Legenda barev */}
           <div className="flex flex-wrap gap-4 text-xs font-bold text-gray-500 px-1">
             <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-emerald-500" /> Běžná práce</div>
             <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-blue-500" /> Práce navíc</div>
@@ -213,11 +243,9 @@ export default function WeeklySchedulePage() {
             <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded bg-gray-100 border border-gray-200" /> Volno</div>
           </div>
 
-          {/* Časová osa na týden */}
           <div className="overflow-x-auto min-w-full pt-2">
             <div className="inline-block min-w-[950px] w-full">
               
-              {/* Popisky hodin nad osou */}
               <div className="flex items-center mb-1 text-[10px] font-bold text-gray-400 text-center">
                 <div className="w-36 shrink-0 text-left pl-2">Datum a den</div>
                 <div className="flex-1 flex">
@@ -229,12 +257,10 @@ export default function WeeklySchedulePage() {
                 </div>
               </div>
 
-              {/* 7 řádků (Pondělí až Neděle) */}
               <div className="space-y-2.5">
                 {calculatedDaysMatrix.map(day => (
                   <div key={day.isoString} className="flex items-center group">
                     
-                    {/* Levý sloupec s reálným datem */}
                     <div className="w-36 shrink-0 text-sm flex flex-col justify-center leading-tight">
                       <span className="font-extrabold text-gray-800">{day.formatted}</span>
                       <span className={`text-[10px] font-bold uppercase tracking-wider ${day.isToday ? 'text-indigo-600' : 'text-gray-400'}`}>
@@ -242,10 +268,9 @@ export default function WeeklySchedulePage() {
                       </span>
                     </div>
 
-                    {/* Spojená 26sloupcová časová osa bez mezer */}
                     <div className="flex-1 flex h-12 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50">
                       {day.slots.map(slot => {
-                        let bgClass = 'bg-gray-100 hover:bg-blue-200'; // Výchozí stav (Volno)
+                        let bgClass = 'bg-gray-100 hover:bg-blue-200';
                         
                         if (slot.status === 'REGULAR_WORKING') bgClass = 'bg-emerald-500 hover:bg-red-600';
                         if (slot.status === 'EXTRA_WORKING') bgClass = 'bg-blue-500 hover:bg-gray-200';
@@ -262,7 +287,6 @@ export default function WeeklySchedulePage() {
                               slot.status === 'BLOCKED' ? 'Mimořádné volno' : 'Volno'
                             }`}
                           >
-                            {/* Jemná tečka značící celou hodinu */}
                             <span className="text-[8px] font-medium opacity-20">
                               {slot.time.split(':')[1] === '00' ? '•' : ''}
                             </span>
