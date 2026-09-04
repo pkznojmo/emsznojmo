@@ -1,9 +1,10 @@
+/*
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../../lib/supabase'; // upravte cestu dle projektu
 import Sidebar from '../../comp/Sidebar';
 import { 
   CreditCard, 
@@ -19,10 +20,9 @@ import {
   Coins
 } from 'lucide-react';
 
-// === BANKOVNÍ ÚDAJE EMS STUDIA ===
 const BANK_ACCOUNT_NUMBER = "131-3604330207";
-const BANK_CODE = "0100"; // KB banka
-const IBAN = "CZ2801000001313604330207"; // Váš IBAN
+const BANK_CODE = "0100";
+const IBAN = "CZ2801000001313604330207";
 
 interface CreditPackage {
   id: string;
@@ -34,7 +34,8 @@ interface CreditPackage {
   popular?: boolean;
 }
 
-const PACKAGES: CreditPackage[] = [
+// Ceník pro standardní klienty (Client)
+const CLIENT_PACKAGES: CreditPackage[] = [
   {
     id: 'single',
     credits: 1,
@@ -60,38 +61,70 @@ const PACKAGES: CreditPackage[] = [
   },
 ];
 
+// Zvýhodněný ceník pro Swimmer & Trainer (300 Kč / 1 kredit)
+const MEMBER_PACKAGES: CreditPackage[] = [
+  {
+    id: 'single',
+    credits: 1,
+    priceCZK: 300,
+    pricePerCredit: 300,
+  },
+  {
+    id: 'pack-10',
+    credits: 10,
+    priceCZK: 3000,
+    pricePerCredit: 300,
+    badge: 'Členská cena',
+    popular: true,
+  },
+  {
+    id: 'pack-20',
+    credits: 20,
+    priceCZK: 6000,
+    pricePerCredit: 300,
+    badge: 'Členská cena',
+  },
+];
+
 export default function KredityPage() {
   const router = useRouter();
-  const [profile, setProfile] = useState<{ id: string; birth_number: string | null; credit_balance: number } | null>(null);
+  const [profile, setProfile] = useState<{ id: string; birth_number: string | null; credit_balance: number; role?: string } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedPackage, setSelectedPackage] = useState<CreditPackage>(PACKAGES[1]); // Výchozí: 10 kreditů
+  const [selectedPackage, setSelectedPackage] = useState<CreditPackage>(CLIENT_PACKAGES[1]);
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [activeOrder, setActiveOrder] = useState<any>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
 
+  // Určení balíčků podle role
+  const isMember = profile?.role === 'SWIMMER' || profile?.role === 'TRAINER';
+  const currentPackages = isMember ? MEMBER_PACKAGES : CLIENT_PACKAGES;
+
   const loadUserData = async () => {
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
 
-      // Kontrola přihlášení - nepříhlášeného uživatele přesměrujeme
       if (userError || !user) {
         router.push('/prihlaseni');
         return;
       }
 
-      // 1. Načtení profilu
+      // 1. Načtení profilu VČETNĚ ROLI (role)
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('id, birth_number, credit_balance')
+        .select('id, birth_number, credit_balance, role')
         .eq('id', user.id)
         .single();
 
       if (profileData) {
         setProfile(profileData);
+        
+        // Nastavení výchozího balíčku podle role
+        const isUserMember = profileData.role === 'Swimmer' || profileData.role === 'Trainer';
+        setSelectedPackage(isUserMember ? MEMBER_PACKAGES[1] : CLIENT_PACKAGES[1]);
       }
 
-      // 2. Načtení historie transakcí kreditů
+      // 2. Načtení historie transakcí
       const { data: txData } = await supabase
         .from('credit_transactions')
         .select('*')
@@ -119,7 +152,6 @@ export default function KredityPage() {
     router.refresh();
   };
 
-  // Vytvoření platebního příkazu a zobrazení QR kódu
   const handleCreatePayment = async () => {
     if (!profile || !profile.birth_number) return;
 
@@ -138,7 +170,6 @@ export default function KredityPage() {
         .single();
 
       if (error) throw error;
-
       setActiveOrder(order);
     } catch (err: any) {
       alert('Nepodařilo se vygenerovat platební příkaz: ' + err.message);
@@ -153,19 +184,14 @@ export default function KredityPage() {
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-    // Generování řetězce pro český QR kód (Standard SPD)
-    const getSPDString = (amount: number, vs: string, credits: number) => {
+  const getSPDString = (amount: number, vs: string, credits: number) => {
     let label = 'vstupů';
-    if (credits === 1) {
-        label = 'vstup';
-    } else if (credits >= 2 && credits <= 4) {
-        label = 'vstupy';
-    }
+    if (credits === 1) label = 'vstup';
+    else if (credits >= 2 && credits <= 4) label = 'vstupy';
 
-    const msg = `${credits} ${label} na EMS cvičení`;
-
+    const msg = `${credits} ${label} na cvičení`;
     return `SPD*1.0*ACC:${IBAN}*AM:${amount}.00*CC:CZK*X-VS:${vs}*MSG:${msg}`;
-    };
+  };
 
   if (loading) {
     return (
@@ -178,20 +204,18 @@ export default function KredityPage() {
 
   return (
     <div className="min-h-screen bg-gray-50/60 flex flex-col md:flex-row text-gray-900">
-      {/* Postranní navigace */}
       <Sidebar onLogout={handleLogout} />
 
-      {/* Hlavní obsah stránky */}
       <main className="flex-1 p-4 md:p-8 lg:p-10 max-w-5xl mx-auto overflow-y-auto w-full space-y-8 pb-24 md:pb-12">
         
-        {/* HEADER SE ZŮSTATKEM */}
+        }
         <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
           <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
           
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
             <div>
               <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm mb-2">
-                <Coins className="w-4 h-4" /> Klientská zóna
+                <Coins className="w-4 h-4" /> Klientská zóna {isMember && <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2 py-0.5 rounded-full border border-emerald-500/30">Zvýhodněné členství ({profile?.role})</span>}
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold">Nákup kreditů</h1>
               <p className="text-slate-400 text-sm mt-1">
@@ -211,14 +235,14 @@ export default function KredityPage() {
           </div>
         </div>
 
-        {/* UPOZORNĚNÍ: CHYBĚJÍCÍ RODNÉ ČÍSLO */}
+        }
         {!profile?.birth_number && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-4 text-amber-900">
             <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
             <div className="space-y-2">
               <h3 className="font-bold">Pro nákup kreditů chybí rodné číslo</h3>
               <p className="text-sm text-amber-800">
-                Rodné číslo slouží jako váš unikátní variabilní symbol pro automatické párování plateb. Pro pokračování ho prosím zadejte ve svém profilu.
+                Rodné číslo slouží jako váš unikátní variabilní symbol pro automatické párování plateb.
               </p>
               <Link 
                 href="/dashboard" 
@@ -230,14 +254,14 @@ export default function KredityPage() {
           </div>
         )}
 
-        {/* VÝBĚR BALÍČKŮ KREDITŮ */}
+        }
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             1. Vyberte si balíček kreditů
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {PACKAGES.map((pkg) => {
+            {currentPackages.map((pkg) => {
               const isSelected = selectedPackage.id === pkg.id;
 
               return (
@@ -245,7 +269,7 @@ export default function KredityPage() {
                   key={pkg.id}
                   onClick={() => {
                     setSelectedPackage(pkg);
-                    setActiveOrder(null); // Resetovat vygenerovaný QR kód při změně balíčku
+                    setActiveOrder(null);
                   }}
                   className={`relative rounded-3xl p-6 cursor-pointer transition-all duration-200 border-2 flex flex-col justify-between ${
                     isSelected
@@ -253,7 +277,6 @@ export default function KredityPage() {
                       : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
                   }`}
                 >
-                  {/* Badge */}
                   {pkg.badge && (
                     <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider text-white shadow-sm ${
                       pkg.popular ? 'bg-emerald-600' : 'bg-slate-900'
@@ -304,7 +327,7 @@ export default function KredityPage() {
           </div>
         </div>
 
-        {/* GENERÁTOR A DETAIL PLATBY */}
+        }
         {profile?.birth_number && (
           <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -334,23 +357,21 @@ export default function KredityPage() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-slate-50 p-6 sm:p-8 rounded-2xl border border-slate-200 animate-in fade-in duration-300">
-                
-                {/* QR Kód */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-slate-50 p-6 sm:p-8 rounded-2xl border border-slate-200">
                 <div className="lg:col-span-5 flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-slate-200 shadow-sm text-center space-y-3">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Naskenujte v mobilním bankovnictví</span>
                   
                   <div className="p-3 bg-white rounded-xl border border-slate-100 shadow-inner">
                     <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
                         getSPDString(
-                        activeOrder.amount_czk, 
-                        activeOrder.variable_symbol, 
-                        activeOrder.credits_to_add || selectedPackage.credits
+                          activeOrder.amount_czk, 
+                          activeOrder.variable_symbol, 
+                          activeOrder.credits_to_add || selectedPackage.credits
                         )
-                    )}`}
-                    alt="Platební QR Kód"
-                    className="w-52 h-52 object-contain"
+                      )}`}
+                      alt="Platební QR Kód"
+                      className="w-52 h-52 object-contain"
                     />
                   </div>
 
@@ -359,7 +380,6 @@ export default function KredityPage() {
                   </div>
                 </div>
 
-                {/* Platební údaje s tlačítky pro kopírování */}
                 <div className="lg:col-span-7 space-y-4">
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3 text-emerald-900 text-sm">
                     <Clock className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -367,8 +387,6 @@ export default function KredityPage() {
                   </div>
 
                   <div className="space-y-3 font-mono text-sm">
-                    
-                    {/* Číslo účtu */}
                     <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200">
                       <div>
                         <span className="text-xs text-slate-400 font-sans block">Číslo účtu</span>
@@ -377,13 +395,11 @@ export default function KredityPage() {
                       <button
                         onClick={() => copyToClipboard(`${BANK_ACCOUNT_NUMBER}/${BANK_CODE}`, 'account')}
                         className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-                        title="Kopírovat"
                       >
                         {copiedField === 'account' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                       </button>
                     </div>
 
-                    {/* Variabilní symbol */}
                     <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-emerald-300 ring-2 ring-emerald-500/10">
                       <div>
                         <span className="text-xs text-emerald-600 font-sans font-bold block">Variabilní symbol (DŮLEŽITÉ)</span>
@@ -392,13 +408,11 @@ export default function KredityPage() {
                       <button
                         onClick={() => copyToClipboard(activeOrder.variable_symbol, 'vs')}
                         className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-                        title="Kopírovat"
                       >
                         {copiedField === 'vs' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                       </button>
                     </div>
 
-                    {/* Částka */}
                     <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200">
                       <div>
                         <span className="text-xs text-slate-400 font-sans block">Částka k úhradě</span>
@@ -407,21 +421,18 @@ export default function KredityPage() {
                       <button
                         onClick={() => copyToClipboard(activeOrder.amount_czk.toString(), 'amount')}
                         className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-                        title="Kopírovat"
                       >
                         {copiedField === 'amount' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
                       </button>
                     </div>
-
                   </div>
                 </div>
-
               </div>
             )}
           </div>
         )}
 
-        {/* HISTORIE TRANSAKCÍ KREDITŮ */}
+        
         <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-4">
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <History className="w-5 h-5 text-slate-500" /> Historie pohybů kreditů
@@ -456,6 +467,70 @@ export default function KredityPage() {
           )}
         </div>
 
+      </main>
+    </div>
+  );
+}
+*/
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Sidebar from '../../comp/Sidebar';
+import { supabase } from '../../../lib/supabase';
+import { Construction } from 'lucide-react';
+
+export default function KredityPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+
+  const loadUserData = async () => {
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error || !user) {
+        router.push('/prihlaseni');
+        return;
+      }
+    } catch (err) {
+      console.error('Chyba při ověřování uživatele:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadUserData();
+  }, [router]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/prihlaseni');
+    router.refresh();
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-gray-500 font-medium text-sm">
+        <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
+        Načítám...
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50/60 flex flex-col md:flex-row text-gray-900">
+      <Sidebar onLogout={handleLogout} />
+
+      <main className="flex-1 p-4 md:p-8 lg:p-10 max-w-5xl mx-auto flex items-center justify-center w-full">
+        <div className="bg-white border border-slate-200 rounded-3xl p-8 sm:p-12 shadow-sm text-center max-w-lg w-full space-y-4">
+          <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+            <Construction className="w-8 h-8" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900">Stránka je ve vývoji</h1>
+          <p className="text-slate-500 text-sm">
+            Tato sekce se pro vás připravuje. Brzy zde bude dostupná správa a nákup kreditů.
+          </p>
+        </div>
       </main>
     </div>
   );
