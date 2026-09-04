@@ -275,6 +275,7 @@ export default function RegisterPage() {
                 id="birthDate"
                 type="date"
                 name="birthDate"
+                required
                 autoComplete="bday"
                 value={formData.birthDate || ''}
                 onChange={handleChange}
