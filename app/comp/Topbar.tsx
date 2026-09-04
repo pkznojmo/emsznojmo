@@ -80,8 +80,8 @@ export default function Topbar() {
     <>
       {/* --- NAVBAR --- */}
       <nav className="sticky top-0 z-[50] shadow-sm bg-[#DDDDDD] h-20 md:h-24">
-        <div className="px-6 relative z-50 h-full flex items-center">
-          <div className="max-w-7xl mx-auto w-full grid grid-cols-2 md:grid-cols-3 items-center">
+        <div className="px-4 sm:px-6 relative z-50 h-full flex items-center">
+          <div className="max-w-7xl mx-auto w-full flex items-center justify-between md:grid md:grid-cols-3">
             
             {/* 1. Levá část - LOGO */}
             <div className="flex items-center justify-start">
@@ -91,7 +91,7 @@ export default function Topbar() {
                   alt="EMSExpress Logo"
                   width={150}               
                   height={50}               
-                  className="h-10 md:h-16 w-auto object-contain" 
+                  className="h-9 sm:h-10 md:h-16 w-auto object-contain" 
                   priority                  
                 />
               </Link>
@@ -114,40 +114,40 @@ export default function Topbar() {
               ))}
             </ul>
 
-            {/* 3. Pravá část - PŘIHLÁŠENÍ / KLIENTSKÁ ZÓNA */}
-            <div className="flex items-center justify-end gap-4">
-              <div className="hidden md:flex items-center gap-3">
-                {loading ? (
-                  <span className="w-5 h-5 border-2 border-slate-400 border-t-slate-700 rounded-full animate-spin" />
-                ) : user ? (
-                  <div className="flex items-center gap-3">
-                    <span className="text-slate-700 text-xs font-semibold normal-case hidden lg:inline">
-                      {profile?.first_name} {profile?.last_name}
-                    </span>
-                    <Link 
-                      href="/dashboard" 
-                      className="bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold uppercase px-3.5 py-2 rounded-md shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
-                    >
-                      <LayoutDashboard size={14} /> Klientská zóna
-                    </Link>
-                  </div>
-                ) : (
+            {/* 3. Pravá část - PŘIHLÁŠENÍ / KLIENTSKÁ ZÓNA + HAMBURGER */}
+            <div className="flex items-center justify-end gap-2 sm:gap-3">
+              {loading ? (
+                <span className="w-5 h-5 border-2 border-slate-400 border-t-slate-700 rounded-full animate-spin" />
+              ) : user ? (
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span className="text-slate-700 text-xs font-semibold normal-case hidden lg:inline">
+                    {profile?.first_name} {profile?.last_name}
+                  </span>
                   <Link 
-                    href="/prihlaseni" 
-                    className="bg-orange-500 hover:bg-orange-600 text-white text-[11px] font-bold uppercase px-3.5 py-2 rounded-md shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
+                    href="/dashboard" 
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] sm:text-[11px] font-bold uppercase px-2.5 sm:px-3.5 py-2 rounded-md shadow-sm transition-all active:scale-95 flex items-center gap-1 sm:gap-1.5 whitespace-nowrap"
                   >
-                    <LogIn size={14} /> Přihlásit se
+                    <LayoutDashboard size={14} />
+                    <span>Klientská zóna</span>
                   </Link>
-                )}
-              </div>
+                </div>
+              ) : (
+                <Link 
+                  href="/prihlaseni" 
+                  className="bg-orange-500 hover:bg-orange-600 text-white text-[10px] sm:text-[11px] font-bold uppercase px-2.5 sm:px-3.5 py-2 rounded-md shadow-sm transition-all active:scale-95 flex items-center gap-1 sm:gap-1.5 whitespace-nowrap"
+                >
+                  <LogIn size={14} />
+                  <span>Přihlásit se</span>
+                </Link>
+              )}
 
               {/* Hamburger pro mobil */}
               <button 
-                className="md:hidden p-2 text-[#2563eb] transition-transform active:scale-95 z-50" 
+                className="md:hidden p-1.5 text-[#2563eb] transition-transform active:scale-95 z-50 ml-1" 
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                 aria-label="Otevřít menu"
               >
-                {isMobileMenuOpen ? <X size={28} /> : <Menu size={28} />}
+                {isMobileMenuOpen ? <X size={26} /> : <Menu size={26} />}
               </button>
             </div>
 
@@ -187,28 +187,6 @@ export default function Topbar() {
                 {link.label}
               </Link>
             ))}
-          </div>
-
-          <hr className="border-slate-200/80 my-2" />
-          
-          <div className="flex flex-col items-center justify-center">
-            {user ? (
-              <Link 
-                href="/dashboard" 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="w-full max-w-sm text-center bg-emerald-500 text-white py-3.5 px-6 rounded-xl flex items-center justify-center gap-2.5 shadow-md shadow-emerald-100 active:scale-98 transition-transform text-base"
-              >
-                <LayoutDashboard size={18} /> Klientská zóna ({profile?.first_name})
-              </Link>
-            ) : (
-              <Link 
-                href="/prihlaseni" 
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="w-full max-w-sm text-center bg-orange-500 text-white py-3.5 px-6 rounded-xl flex items-center justify-center gap-2.5 shadow-md shadow-orange-100 active:scale-98 transition-transform text-base"
-              >
-                <LogIn size={18} /> Přihlásit se
-              </Link>
-            )}
           </div>
         </div>
       )}

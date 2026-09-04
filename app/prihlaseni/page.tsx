@@ -1,17 +1,40 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // Kontrola, zda je uživatel již přihlášen
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        window.location.href = '/dashboard';
+      } else {
+        setCheckingAuth(false);
+      }
+    };
+
+    checkUser();
+
+    // Posluchač změn stavu autentizace
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        window.location.href = '/dashboard';
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // 1. Přihlášení uživatele
   const handleLogin = async (e: React.FormEvent) => {
@@ -36,11 +59,10 @@ export default function LoginPage() {
         throw new Error(authError.message);
       }
 
-      router.push('/dashboard');
-      router.refresh();
+      // Tvrdé přesměrování zajistí načtení nové relace pro Next.js
+      window.location.href = '/dashboard';
     } catch (err: any) {
       setError(err.message);
-    } finally {
       setLoading(false);
     }
   };
@@ -59,7 +81,6 @@ export default function LoginPage() {
 
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        // Správný callback, který kód vymění za session a přesměruje na formulář
         redirectTo: `${window.location.origin}/auth/callback?next=/obnova-hesla`,
       });
 
@@ -74,6 +95,21 @@ export default function LoginPage() {
       setResetLoading(false);
     }
   };
+
+  // Načítací obrazovka při kontrole existující relace
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center p-6">
+        <div className="flex items-center gap-3 text-emerald-600 font-semibold">
+          <svg className="animate-spin h-6 w-6 text-emerald-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          Načítám...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center p-6">
@@ -95,13 +131,16 @@ export default function LoginPage() {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-5">
+        <form onSubmit={handleLogin} method="POST" action="#" className="space-y-5">
           {/* Email */}
           <div>
-            <label className="block text-sm font-semibold mb-2 text-gray-700">E-mail</label>
+            <label htmlFor="email" className="block text-sm font-semibold mb-2 text-gray-700">E-mail</label>
             <input
+              id="email"
+              name="email"
               type="email"
               required
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
@@ -112,7 +151,7 @@ export default function LoginPage() {
           {/* Heslo + zapomenuté heslo odkaz */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-semibold text-gray-700">Heslo</label>
+              <label htmlFor="password" className="text-sm font-semibold text-gray-700">Heslo</label>
               <button
                 type="button"
                 onClick={handleForgotPassword}
@@ -123,8 +162,11 @@ export default function LoginPage() {
               </button>
             </div>
             <input
+              id="password"
+              name="password"
               type="password"
               required
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
@@ -157,7 +199,7 @@ export default function LoginPage() {
           Nemáš ještě účet?{' '}
           <button
             type="button"
-            onClick={() => router.push('/registrace')}
+            onClick={() => { window.location.href = '/registrace'; }}
             className="text-emerald-600 font-semibold hover:underline"
           >
             Zaregistruj se

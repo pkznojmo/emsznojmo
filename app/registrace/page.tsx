@@ -19,8 +19,9 @@ export default function RegisterPage() {
     lastName: '',
     email: '',
     password: '',
-    confirmPassword: '', // Nové pole
+    confirmPassword: '',
     phone: '',
+    birthNumber: '', // Rodné číslo bez lomítka (VS pro platby)
     birthDate: '',
     address: '',
     clothingSize: 'M',
@@ -41,11 +42,19 @@ export default function RegisterPage() {
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    if (name === 'birthNumber') {
+      // Automaticky odfiltruje lomítka, mezery a nečíselné znaky, max 10 číslic
+      const cleaned = value.replace(/\D/g, '').slice(0, 10);
+      setFormData(prev => ({ ...prev, birthNumber: cleaned }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleSizeSelect = (size: string) => {
-    setFormData({ ...formData, clothingSize: size });
+    setFormData(prev => ({ ...prev, clothingSize: size }));
     setIsDropdownOpen(false);
   };
 
@@ -56,6 +65,12 @@ export default function RegisterPage() {
     // Validace shody hesel
     if (formData.password !== formData.confirmPassword) {
       setError('Hesla se neshodují.');
+      return;
+    }
+
+    // Validace rodného čísla (9 nebo 10 číslic)
+    if (formData.birthNumber && (formData.birthNumber.length < 9 || formData.birthNumber.length > 10)) {
+      setError('Rodné číslo musí mít 9 nebo 10 číslic (bez lomítka).');
       return;
     }
 
@@ -119,12 +134,13 @@ export default function RegisterPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" method="POST" action="#">
           {/* Jméno a Příjmení */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">Jméno *</label>
+              <label htmlFor="firstName" className="block text-sm font-semibold mb-2 text-gray-700">Jméno *</label>
               <input
+                id="firstName"
                 type="text"
                 name="firstName"
                 autoComplete="given-name"
@@ -136,8 +152,9 @@ export default function RegisterPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">Příjmení *</label>
+              <label htmlFor="lastName" className="block text-sm font-semibold mb-2 text-gray-700">Příjmení *</label>
               <input
+                id="lastName"
                 type="text"
                 name="lastName"
                 autoComplete="family-name"
@@ -152,8 +169,9 @@ export default function RegisterPage() {
 
           {/* Email */}
           <div>
-            <label className="block text-sm font-semibold mb-2 text-gray-700">E-mail *</label>
+            <label htmlFor="email" className="block text-sm font-semibold mb-2 text-gray-700">E-mail *</label>
             <input
+              id="email"
               type="email"
               name="email"
               autoComplete="email"
@@ -168,9 +186,10 @@ export default function RegisterPage() {
           {/* Hesla */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">Heslo *</label>
+              <label htmlFor="password" className="block text-sm font-semibold mb-2 text-gray-700">Heslo *</label>
               <div className="relative">
                 <input
+                  id="password"
                   type={showPassword ? 'text' : 'password'}
                   name="password"
                   autoComplete="new-password"
@@ -184,8 +203,9 @@ export default function RegisterPage() {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">Potvrzení hesla *</label>
+              <label htmlFor="confirmPassword" className="block text-sm font-semibold mb-2 text-gray-700">Potvrzení hesla *</label>
               <input
+                id="confirmPassword"
                 type={showPassword ? 'text' : 'password'}
                 name="confirmPassword"
                 autoComplete="new-password"
@@ -213,11 +233,12 @@ export default function RegisterPage() {
             <label htmlFor="show-pass" className="text-xs text-gray-500 cursor-pointer select-none">Zobrazit hesla</label>
           </div>
 
-          {/* Telefon a Datum Narození */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Telefon, Rodné číslo a Datum Narození */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">Telefon *</label>
+              <label htmlFor="phone" className="block text-sm font-semibold mb-2 text-gray-700">Telefon *</label>
               <input
+                id="phone"
                 type="tel"
                 name="phone"
                 autoComplete="tel"
@@ -228,9 +249,30 @@ export default function RegisterPage() {
                 placeholder="+420 123 456 789"
               />
             </div>
+
             <div>
-              <label className="block text-sm font-semibold mb-2 text-gray-700">Datum narození</label>
+              <label htmlFor="birthNumber" className="block text-sm font-semibold mb-2 text-gray-700">
+                Rodné číslo <span className="text-xs font-normal text-gray-400">(bez lomítka) *</span>
+              </label>
               <input
+                id="birthNumber"
+                type="text"
+                name="birthNumber"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={10}
+                required
+                value={formData.birthNumber}
+                onChange={handleChange}
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 outline-none transition font-mono"
+                placeholder="9931121234"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="birthDate" className="block text-sm font-semibold mb-2 text-gray-700">Datum narození</label>
+              <input
+                id="birthDate"
                 type="date"
                 name="birthDate"
                 autoComplete="bday"
@@ -244,8 +286,9 @@ export default function RegisterPage() {
           {/* Adresa a Velikost */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-2">
-              <label className="block text-sm font-semibold mb-2 text-gray-700">Adresa trvalého bydliště</label>
+              <label htmlFor="address" className="block text-sm font-semibold mb-2 text-gray-700">Adresa trvalého bydliště</label>
               <input
+                id="address"
                 type="text"
                 name="address"
                 autoComplete="street-address"
@@ -255,6 +298,7 @@ export default function RegisterPage() {
                 placeholder="Ulice 123, Znojmo"
               />
             </div>
+
             <div className="relative" ref={dropdownRef}>
               <label className="block text-sm font-semibold mb-2 text-gray-700">Velikost EMS</label>
               <button

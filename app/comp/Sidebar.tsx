@@ -3,7 +3,18 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { User, Calendar, PlusCircle, LogOut, Clock, Menu, X, Users, CalendarDays, LayoutDashboard } from 'lucide-react';
+import { 
+  User, 
+  Calendar, 
+  PlusCircle, 
+  LogOut, 
+  Clock, 
+  X, 
+  Users, 
+  CalendarDays, 
+  LayoutDashboard,
+  MoreHorizontal
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '../../lib/supabase';
 
@@ -43,8 +54,8 @@ export default function Sidebar({ onLogout }: SidebarProps) {
   }, [isMobileMenuOpen]);
 
   const navLinks = [
-    { href: "/dashboard", label: "Můj Profil", icon: User },
-    { href: "/dashboard/rezervace", label: "Moje Rezervace", icon: Calendar },
+    { href: "/dashboard", label: "Profil", icon: User },
+    { href: "/dashboard/rezervace", label: "Rezervace", icon: Calendar },
     { href: "/dashboard/nova-lekce", label: "Nová lekce", icon: PlusCircle },
   ];
 
@@ -54,37 +65,30 @@ export default function Sidebar({ onLogout }: SidebarProps) {
     { href: "/dashboard/klienti", label: "Klienti", icon: Users },
   ];
 
+  // Kontrola, zda je aktivní jakákoliv trenérská záložka
+  const isTrainerTabActive = trainerLinks.some(link => pathname === link.href);
+
   return (
     <>
-      {/* --- SIDEBAR PRO DESKTOP & HORNÍ PANEL PRO MOBIL --- */}
-      <aside className="w-full md:w-64 bg-slate-50/50 md:bg-white border-b md:border-b-0 md:border-r border-slate-200/80 p-4 md:p-6 flex md:flex-col justify-between shrink-0 sticky top-20 md:top-24 md:h-[calc(100vh-6rem)] z-30 overflow-y-auto">
+      {/* ========================================== */}
+      {/* 1. DESKTOP SIDEBAR (Zobrazuje se od md: flex) */}
+      {/* ========================================== */}
+      <aside className="hidden md:flex w-64 bg-white border-r border-slate-200/80 p-6 flex-col justify-between shrink-0 sticky top-24 h-[calc(100vh-6rem)] z-30 overflow-y-auto">
         
-        <div className="w-full flex md:flex-col justify-between md:justify-start items-center md:items-stretch">
-          
-          {/* Hlavička klientské zóny */}
-          <div className="flex items-center justify-between w-full md:mb-6 md:pb-4 md:border-b md:border-slate-100">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-500/10 text-emerald-600 rounded-lg">
-                <LayoutDashboard size={18} />
-              </div>
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block leading-none">Aplikace</span>
-                <span className="text-sm font-extrabold text-slate-800">Klientská zóna</span>
-              </div>
+        <div className="w-full space-y-6">
+          {/* Hlavička */}
+          <div className="flex items-center gap-2.5 pb-4 border-b border-slate-100">
+            <div className="p-2 bg-emerald-500/10 text-emerald-600 rounded-lg">
+              <LayoutDashboard size={18} />
             </div>
-
-            {/* Hamburger pro mobil */}
-            <button 
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="md:hidden p-2 text-slate-600 hover:text-emerald-600 transition-colors rounded-lg bg-white border border-slate-200/80"
-              aria-label="Otevřít menu klientské zóny"
-            >
-              {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
-            </button>
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block leading-none">Aplikace</span>
+              <span className="text-sm font-extrabold text-slate-800">Klientská zóna</span>
+            </div>
           </div>
 
-          {/* Navigace pro PC */}
-          <nav className="hidden md:block space-y-1 w-full">
+          {/* Klientská navigace */}
+          <nav className="space-y-1 w-full">
             <div className="px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
               Klientské menu
             </div>
@@ -139,7 +143,7 @@ export default function Sidebar({ onLogout }: SidebarProps) {
         </div>
 
         {/* Odhlášení pro PC */}
-        <div className="hidden md:block w-full mt-6 pt-4 border-t border-slate-100">
+        <div className="w-full mt-6 pt-4 border-t border-slate-100">
           <button 
             onClick={onLogout} 
             className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 text-slate-500 hover:text-red-600 hover:bg-red-50 text-xs font-bold uppercase tracking-wider rounded-lg transition-all"
@@ -149,78 +153,117 @@ export default function Sidebar({ onLogout }: SidebarProps) {
         </div>
       </aside>
 
-      {/* --- MOBILNÍ MENU KLIENTSKÉ ZÓNY --- */}
-      {isMobileMenuOpen && (
-        <div className="fixed inset-x-0 bottom-0 top-20 md:hidden bg-white/95 backdrop-blur-md z-40 flex flex-col justify-between p-6 animate-in fade-in slide-in-from-top-2 duration-200 overflow-y-auto">
-          
-          <nav className="space-y-2 mt-2">
-            <div className="px-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-              Klientské menu
-            </div>
-            {navLinks.map((link) => {
-              const Icon = link.icon;
-              const isActive = pathname === link.href;
-              return (
-                <Link 
-                  key={link.href} 
-                  href={link.href} 
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all text-sm font-bold tracking-wide uppercase", 
-                    isActive 
-                      ? "bg-slate-900 text-white shadow-md shadow-slate-200" 
-                      : "text-slate-700 bg-slate-50 active:bg-slate-100"
-                  )}
-                >
-                  <Icon size={18} className={isActive ? "text-emerald-400" : "text-slate-400"} /> 
-                  {link.label}
-                </Link>
-              );
-            })}
+      {/* ========================================== */}
+      {/* 2. MOBILNÍ BOTTOMBAR (Zobrazuje se do md:hidden) */}
+      {/* ========================================== */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-lg border-t border-slate-200/80 z-50 px-2 py-1.5 flex items-center justify-around shadow-[0_-4px_20px_rgba(0,0,0,0.05)] pb-[calc(0.375rem+env(safe-area-inset-bottom))]">
+        {navLinks.map((link) => {
+          const Icon = link.icon;
+          const isActive = pathname === link.href;
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={cn(
+                "flex flex-col items-center justify-center gap-1 flex-1 py-1 px-1 rounded-xl transition-all",
+                isActive 
+                  ? "text-emerald-600 font-extrabold" 
+                  : "text-slate-500 hover:text-slate-800 font-medium"
+              )}
+            >
+              <div className={cn(
+                "p-1 rounded-lg transition-all",
+                isActive && "bg-emerald-50 text-emerald-600"
+              )}>
+                <Icon size={20} />
+              </div>
+              <span className="text-[10px] tracking-tight leading-none">{link.label}</span>
+            </Link>
+          );
+        })}
 
-            {/* Trenérská sekce na mobilu */}
+        {/* Tlačítko VÍCE / MENU pro mobil (Trenérské věci + Logout) */}
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className={cn(
+            "flex flex-col items-center justify-center gap-1 flex-1 py-1 px-1 rounded-xl transition-all relative",
+            (isMobileMenuOpen || isTrainerTabActive) 
+              ? "text-emerald-600 font-extrabold" 
+              : "text-slate-500 font-medium"
+          )}
+        >
+          <div className={cn(
+            "p-1 rounded-lg transition-all",
+            (isMobileMenuOpen || isTrainerTabActive) && "bg-emerald-50 text-emerald-600"
+          )}>
+            {isMobileMenuOpen ? <X size={20} /> : <MoreHorizontal size={20} />}
+          </div>
+          <span className="text-[10px] tracking-tight leading-none">
+            {role === 'TRAINER' ? 'Trenér / Více' : 'Více'}
+          </span>
+        </button>
+      </nav>
+
+      {/* ========================================== */}
+      {/* 3. MOBILNÍ SLIDE-UP PANEL (Při rozkliknutí "Více") */}
+      {/* ========================================== */}
+      {isMobileMenuOpen && (
+        <div className="md:hidden fixed inset-0 z-40">
+          {/* Tmavý podklad (Backdrop) */}
+          <div 
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+
+          {/* Vyjíždějící karta zaspodu */}
+          <div className="fixed bottom-16 inset-x-0 bg-white rounded-t-3xl border-t border-slate-200 p-6 z-50 shadow-2xl max-h-[75vh] overflow-y-auto animate-in slide-in-from-bottom-5 duration-200">
+            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6" />
+
+            {/* Trenérská zóna */}
             {role === 'TRAINER' && (
-              <div className="pt-4 mt-4 border-t border-slate-100 space-y-2">
-                <div className="px-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+              <div className="mb-6">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-1">
                   Trenérská zóna
                 </div>
-                {trainerLinks.map((link) => {
-                  const Icon = link.icon;
-                  const isActive = pathname === link.href;
-                  return (
-                    <Link 
-                      key={link.href} 
-                      href={link.href} 
-                      onClick={() => setIsMobileMenuOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3.5 px-4 py-3 rounded-xl transition-all text-sm font-bold tracking-wide uppercase", 
-                        isActive 
-                          ? "bg-slate-900 text-white shadow-md shadow-slate-200" 
-                          : "text-slate-700 bg-slate-50 active:bg-slate-100"
-                      )}
-                    >
-                      <Icon size={18} className={isActive ? "text-emerald-400" : "text-slate-400"} /> 
-                      {link.label}
-                    </Link>
-                  );
-                })}
+                <div className="space-y-1.5">
+                  {trainerLinks.map((link) => {
+                    const Icon = link.icon;
+                    const isActive = pathname === link.href;
+                    return (
+                      <Link 
+                        key={link.href} 
+                        href={link.href} 
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className={cn(
+                          "flex items-center gap-3.5 px-4 py-3 rounded-2xl transition-all text-sm font-bold tracking-wide uppercase", 
+                          isActive 
+                            ? "bg-slate-900 text-white shadow-md shadow-slate-200" 
+                            : "text-slate-700 bg-slate-50 active:bg-slate-100"
+                        )}
+                      >
+                        <Icon size={18} className={isActive ? "text-emerald-400" : "text-slate-400"} /> 
+                        {link.label}
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
             )}
-          </nav>
 
-          {/* Odhlášení na mobilu */}
-          <div className="pt-6 border-t border-slate-100 mt-auto">
-            <button 
-              onClick={() => {
-                setIsMobileMenuOpen(false);
-                onLogout();
-              }} 
-              className="w-full flex items-center justify-center gap-2 py-3.5 bg-red-50 text-red-600 active:bg-red-100 font-bold uppercase text-xs tracking-wider rounded-xl transition-all border border-red-100"
-            >
-              <LogOut size={18} /> Odhlásit se
-            </button>
+            {/* Tlačítko pro odhlášení */}
+            <div className="pt-2">
+              <button 
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  onLogout();
+                }} 
+                className="w-full flex items-center justify-center gap-2.5 py-3.5 bg-red-50 text-red-600 active:bg-red-100 font-bold uppercase text-xs tracking-wider rounded-2xl transition-all border border-red-100"
+              >
+                <LogOut size={18} /> Odhlásit se z účtu
+              </button>
+            </div>
           </div>
-
         </div>
       )}
     </>
