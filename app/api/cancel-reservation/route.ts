@@ -5,6 +5,7 @@ import { sendReservationCancellationEmails } from '@/lib/emails';
 export async function POST(request: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+
     const supabaseServiceKey =
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -44,13 +45,21 @@ export async function POST(request: Request) {
     // 2. NAČTENÍ REZERVACE
     // -----------------------------------------
 
-    const { data: reservation, error: resError } = await supabase
+    const {
+      data: reservation,
+      error: reservationError,
+    } = await supabase
       .from('reservations')
       .select('*')
       .eq('id', reservation_id)
       .single();
 
-    if (resError || !reservation) {
+    if (reservationError || !reservation) {
+      console.error(
+        'Reservation load error:',
+        reservationError
+      );
+
       return NextResponse.json(
         {
           error: 'Rezervace nebyla nalezena.',
@@ -60,46 +69,49 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
-    // 3. BEZPEČNOSTNÍ KONTROLA
+    // 3. KONTROLA VLASTNÍKA
     // -----------------------------------------
 
     if (reservation.user_id !== user_id) {
       return NextResponse.json(
         {
-          error: 'Nemáte oprávnění zrušit tuto rezervaci.',
+          error:
+            'Nemáte oprávnění zrušit tuto rezervaci.',
         },
         { status: 403 }
       );
     }
 
     // -----------------------------------------
-    // 4. STORNO LHŮTA 24 HODIN
+    // 4. DATUM + ČAS
     // -----------------------------------------
 
-    const cleanTime = reservation.time
+    const cleanTime = String(reservation.time)
       .split('-')[0]
       .trim();
 
-    const [yr, mo, dy] = reservation.date
-      .split('-')
-      .map(Number);
+    const [year, month, day] =
+      String(reservation.date)
+        .split('-')
+        .map(Number);
 
-    const [hr, mn] = cleanTime
+    const [hour, minute] = cleanTime
       .split(':')
       .map(Number);
 
     const reservationDate = new Date(
-      yr,
-      mo - 1,
-      dy,
-      hr,
-      mn
+      year,
+      month - 1,
+      day,
+      hour,
+      minute
     );
 
     const now = new Date();
 
     const hoursRemaining =
-      (reservationDate.getTime() - now.getTime()) /
+      (reservationDate.getTime() -
+        now.getTime()) /
       (1000 * 60 * 60);
 
     if (hoursRemaining < 24) {
@@ -116,16 +128,23 @@ export async function POST(request: Request) {
     // 5. PROFIL UŽIVATELE
     // -----------------------------------------
 
-    const { data: userProfile, error: profileError } =
-      await supabase
-        .from('profiles')
-        .select(
-          'credit_balance, first_name, last_name, email'
-        )
-        .eq('id', user_id)
-        .single();
+    const {
+      data: userProfile,
+      error: userProfileError,
+    } = await supabase
+      .from('profiles')
+      .select(
+        'credit_balance, first_name, last_name, email'
+      )
+      .eq('id', user_id)
+      .single();
 
-    if (profileError || !userProfile) {
+    if (userProfileError || !userProfile) {
+      console.error(
+        'User profile error:',
+        userProfileError
+      );
+
       return NextResponse.json(
         {
           error: 'Uživatel nenalezen.',
@@ -134,102 +153,74 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!userProfile.email) {
-      return NextResponse.json(
-        {
-          error:
-            'Uživatel nemá nastavený e-mail.',
-        },
-        { status: 400 }
-      );
-    }
-
     // -----------------------------------------
-    // 6. NAČTENÍ TRENÉRŮ
-    //
-    // Podporuje:
-    // - reservation.trainer_id
-    // - reservation.trainer_ids[]
+    // 6. ZJISTÍME TRENÉRA
     // -----------------------------------------
 
-    const trainerIds = Array.from(
-      new Set(
-        [
-          reservation.trainer_id,
-          ...(Array.isArray(reservation.trainer_ids)
-            ? reservation.trainer_ids
-            : []),
-        ].filter(Boolean)
-      )
-    );
+    let trainerEmails: string[] = [];
+    let trainerName = 'Trenér';
 
-    let trainerProfiles: Array<{
-      id: string;
-      email: string | null;
-      first_name: string | null;
-      last_name: string | null;
-    }> = [];
-
-    if (trainerIds.length > 0) {
+    if (reservation.trainer_id) {
       const {
-        data: trainers,
-        error: trainersError,
+        data: trainerProfile,
+        error: trainerError,
       } = await supabase
         .from('profiles')
         .select(
-          'id, email, first_name, last_name'
+          'email, first_name, last_name'
         )
-        .in('id', trainerIds);
+        .eq('id', reservation.trainer_id)
+        .single();
 
-      if (trainersError) {
+      if (trainerError) {
         console.error(
-          'Chyba při načítání trenérů:',
-          trainersError
+          'Trainer profile error:',
+          trainerError
         );
-      } else if (trainers) {
-        trainerProfiles = trainers;
+      }
+
+      if (trainerProfile) {
+        if (trainerProfile.email) {
+          trainerEmails = [
+            trainerProfile.email,
+          ];
+        }
+
+        trainerName =
+          `${trainerProfile.first_name || ''} ${
+            trainerProfile.last_name || ''
+          }`.trim() || 'Trenér';
       }
     }
 
-    // E-mailové adresy trenérů
-    const trainerEmails = trainerProfiles
-      .map((trainer) => trainer.email)
-      .filter(
-        (email): email is string =>
-          Boolean(email)
-      );
-
-    const trainerNames = trainerProfiles
-      .map((trainer) =>
-        `${trainer.first_name || ''} ${
-          trainer.last_name || ''
-        }`.trim()
-      )
-      .filter(Boolean);
-
-    const trainerName =
-      trainerNames.length > 0
-        ? trainerNames.join(', ')
-        : 'Trenér';
+    console.log('STORNO EMAIL DATA:', {
+      customerEmail: userProfile.email,
+      trainerEmails,
+      trainerName,
+      reservationDate: reservation.date,
+      reservationTime: cleanTime,
+    });
 
     // -----------------------------------------
     // 7. VRÁCENÍ KREDITU
     // -----------------------------------------
 
     const currentCredits =
-      userProfile.credit_balance || 0;
+      Number(userProfile.credit_balance) || 0;
 
-    const { error: creditUpdateError } =
-      await supabase
-        .from('profiles')
-        .update({
-          credit_balance: currentCredits + 1,
-        })
-        .eq('id', user_id);
+    const {
+      error: creditUpdateError,
+    } = await supabase
+      .from('profiles')
+      .update({
+        credit_balance:
+          currentCredits + 1,
+      })
+      .eq('id', user_id);
 
     if (creditUpdateError) {
       console.error(
-        'Chyba při přičítání kreditu:',
+        'Credit update error:',
         creditUpdateError
       );
 
@@ -243,21 +234,23 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
-    // 8. ZÁZNAM O VRÁCENÍ KREDITU
+    // 8. TRANSAKCE
     // -----------------------------------------
 
-    const { error: transactionError } =
-      await supabase
-        .from('credit_transactions')
-        .insert({
-          user_id,
-          amount: 1,
-          description: `Vrácení kreditu - zrušení rezervace (${reservation.date} v ${cleanTime})`,
-        });
+    const {
+      error: transactionError,
+    } = await supabase
+      .from('credit_transactions')
+      .insert({
+        user_id,
+        amount: 1,
+        description:
+          `Vrácení kreditu - zrušení rezervace (${reservation.date} v ${cleanTime})`,
+      });
 
     if (transactionError) {
       console.error(
-        'Chyba při ukládání kreditní transakce:',
+        'Transaction error:',
         transactionError
       );
     }
@@ -266,13 +259,19 @@ export async function POST(request: Request) {
     // 9. SMAZÁNÍ REZERVACE
     // -----------------------------------------
 
-    const { error: deleteError } =
-      await supabase
-        .from('reservations')
-        .delete()
-        .eq('id', reservation_id);
+    const {
+      error: deleteError,
+    } = await supabase
+      .from('reservations')
+      .delete()
+      .eq('id', reservation_id);
 
     if (deleteError) {
+      console.error(
+        'Delete reservation error:',
+        deleteError
+      );
+
       return NextResponse.json(
         {
           error:
@@ -283,61 +282,59 @@ export async function POST(request: Request) {
     }
 
     // -----------------------------------------
-    // 10. ODESLÁNÍ STORNO E-MAILŮ
+    // 10. ODESLÁNÍ EMAILŮ
     // -----------------------------------------
 
+    const clientName =
+      `${userProfile.first_name || ''} ${
+        userProfile.last_name || ''
+      }`.trim() || 'Klient';
+
+    const startTime = new Date(
+      `${reservation.date}T${cleanTime}:00`
+    );
+
+    const endTime = new Date(
+      startTime.getTime() + 45 * 60 * 1000
+    );
+
     try {
-      const clientName =
-        `${userProfile.first_name || ''} ${
-          userProfile.last_name || ''
-        }`.trim() || 'Klient';
-
-      const startTime = new Date(
-        `${reservation.date}T${cleanTime}:00`
-      );
-
-      const endTime = new Date(
-        startTime.getTime() +
-          45 * 60 * 1000
-      );
-
       await sendReservationCancellationEmails({
-        customerEmail: userProfile.email,
+        customerEmail:
+          userProfile.email || '',
         customerName: clientName,
         trainerEmails,
         trainerName,
         startTime,
         endTime,
-        serviceName: 'EMS Trénink',
+        serviceName:
+          reservation.service_name ||
+          'EMS Trénink',
       });
 
       console.log(
-        'Storno e-maily úspěšně odeslány.',
-        {
-          customerEmail: userProfile.email,
-          trainerEmails,
-        }
+        'STORNO EMAILY ODESLÁNY'
       );
     } catch (emailError) {
-      // Rezervace je zrušená i v případě,
-      // že Resend vrátí chybu.
       console.error(
-        'Chyba při odesílání storno e-mailů:',
+        'STORNO EMAIL ERROR:',
         emailError
       );
     }
 
     // -----------------------------------------
-    // 11. ODPOVĚĎ
+    // 11. HOTOVO
     // -----------------------------------------
 
     return NextResponse.json({
       success: true,
       message:
-        'Rezervace byla úspěšně zrušena, kredit byl navrácen a storno e-maily byly zpracovány.',
-      emails: {
-        customer: Boolean(userProfile.email),
-        trainers: trainerEmails.length,
+        'Rezervace byla zrušena a e-maily byly odeslány.',
+      email: {
+        customer:
+          Boolean(userProfile.email),
+        trainers:
+          trainerEmails.length,
       },
     });
   } catch (error: any) {

@@ -1,7 +1,6 @@
 import { Resend } from 'resend';
 import { createEvent, EventAttributes } from 'ics';
 
-// Pomocná funkce pro bezpečné získání Resend instance až při volání
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY;
 
@@ -35,7 +34,7 @@ interface CancellationEmailProps {
 }
 
 function escapeHtml(value: string) {
-  return value
+  return String(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -43,19 +42,34 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#039;');
 }
 
-// Pomocná funkce pro Google Kalendář
+function formatDate(date: Date) {
+  return date.toLocaleDateString('cs-CZ', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatTime(date: Date) {
+  return date.toLocaleTimeString('cs-CZ', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function getGoogleCalendarUrl(
   title: string,
   start: Date,
   end: Date,
   description: string
 ) {
-  const pad = (n: number) => n.toString().padStart(2, '0');
+  const pad = (n: number) => String(n).padStart(2, '0');
 
   const formatGCalDate = (d: Date) => {
-    return `${d.getFullYear()}${pad(
-      d.getMonth() + 1
-    )}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(
+      d.getDate()
+    )}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
   };
 
   const params = new URLSearchParams({
@@ -69,7 +83,6 @@ function getGoogleCalendarUrl(
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
-// Generování .ics souboru pro Apple/Outlook
 async function generateIcsBuffer(
   title: string,
   start: Date,
@@ -111,7 +124,7 @@ async function generateIcsBuffer(
 }
 
 /**
- * EMAILY PRO NOVOU REZERVACI
+ * NOVÁ REZERVACE
  */
 export async function sendReservationEmails({
   customerEmail,
@@ -124,24 +137,8 @@ export async function sendReservationEmails({
 }: ReservationEmailProps) {
   const resend = getResendClient();
 
-  const safeCustomerName = escapeHtml(customerName);
-  const safeTrainerName = escapeHtml(trainerName);
-  const safeServiceName = escapeHtml(serviceName);
-
-  const formattedDate = startTime.toLocaleDateString('cs-CZ', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-
-  const formattedTime = `${startTime.toLocaleTimeString('cs-CZ', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })} – ${endTime.toLocaleTimeString('cs-CZ', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })}`;
+  const formattedDate = formatDate(startTime);
+  const formattedTime = `${formatTime(startTime)} – ${formatTime(endTime)}`;
 
   const title = `EMS Trénink: ${serviceName}`;
 
@@ -164,162 +161,107 @@ export async function sendReservationEmails({
     description
   );
 
-  // -----------------------------------------
-  // EMAIL KLIENTOVI
-  // -----------------------------------------
-
   const customerHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; color: #1f2937;">
-      <h2 style="color: #059669; margin-top: 0;">
-        Potvrzení rezervace – EMS Znojmo
-      </h2>
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:12px;color:#1f2937;">
+      <h2 style="color:#059669;">Potvrzení rezervace – EMS Znojmo</h2>
 
-      <p>Ahoj <strong>${safeCustomerName}</strong>,</p>
+      <p>Ahoj <strong>${escapeHtml(customerName)}</strong>,</p>
+      <p>tvoje rezervace byla úspěšně vytvořena.</p>
 
-      <p>
-        tvoje rezervace byla úspěšně vytvořena!
-      </p>
-
-      <div style="background-color: #f9fafb; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #059669;">
-        <p style="margin: 4px 0;">
-          <strong>Služba:</strong> ${safeServiceName}
-        </p>
-
-        <p style="margin: 4px 0;">
-          <strong>Datum:</strong> ${escapeHtml(formattedDate)}
-        </p>
-
-        <p style="margin: 4px 0;">
-          <strong>Čas:</strong> ${escapeHtml(formattedTime)}
-        </p>
-
-        <p style="margin: 4px 0;">
-          <strong>Trenér:</strong> ${safeTrainerName}
-        </p>
+      <div style="background:#f9fafb;padding:16px;border-radius:8px;border-left:4px solid #059669;margin:20px 0;">
+        <p><strong>Služba:</strong> ${escapeHtml(serviceName)}</p>
+        <p><strong>Datum:</strong> ${escapeHtml(formattedDate)}</p>
+        <p><strong>Čas:</strong> ${escapeHtml(formattedTime)}</p>
+        <p><strong>Trenér:</strong> ${escapeHtml(trainerName)}</p>
       </div>
 
-      <div style="margin: 28px 0; text-align: center;">
+      <div style="text-align:center;margin:25px 0;">
         <a
           href="${googleCalUrl}"
           target="_blank"
-          style="background-color: #059669; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;"
+          style="background:#059669;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;"
         >
           📅 Přidat do Google Kalendáře
         </a>
       </div>
 
-      <p style="font-size: 0.85em; color: #6b7280; text-align: center;">
-        V příloze tohoto e-mailu najdeš také soubor <code>.ics</code>
-        pro Apple Kalendář nebo Outlook.
+      <p style="color:#6b7280;font-size:14px;text-align:center;">
+        V příloze je také kalendářový soubor .ics.
       </p>
 
-      <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+      <hr style="border:0;border-top:1px solid #e5e7eb;margin:20px 0;">
 
-      <p style="margin-bottom: 0;">
+      <p>
         Těšíme se na tebe!<br>
         <strong>Tým EMS Znojmo</strong>
       </p>
     </div>
   `;
 
-  // -----------------------------------------
-  // EMAIL TRENÉRŮM
-  // -----------------------------------------
-
   const trainerHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; color: #1f2937;">
-      <h2 style="color: #2563eb; margin-top: 0;">
-        Nová rezervace 🏋️‍♂️
-      </h2>
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:12px;color:#1f2937;">
+      <h2 style="color:#2563eb;">Nová rezervace 🏋️‍♂️</h2>
 
       <p>Ahoj,</p>
 
       <p>
-        klient <strong>${safeCustomerName}</strong>
+        klient <strong>${escapeHtml(customerName)}</strong>
         vytvořil novou rezervaci.
       </p>
 
-      <div style="background-color: #eff6ff; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb;">
-        <p style="margin: 4px 0;">
-          <strong>Služba:</strong> ${safeServiceName}
-        </p>
-
-        <p style="margin: 4px 0;">
-          <strong>Datum:</strong> ${escapeHtml(formattedDate)}
-        </p>
-
-        <p style="margin: 4px 0;">
-          <strong>Čas:</strong> ${escapeHtml(formattedTime)}
-        </p>
-
-        <p style="margin: 4px 0;">
-          <strong>Klient:</strong>
-          ${safeCustomerName} (${escapeHtml(customerEmail)})
-        </p>
-
-        <p style="margin: 4px 0;">
-          <strong>Trenér:</strong> ${safeTrainerName}
-        </p>
-      </div>
-
-      <div style="margin: 28px 0; text-align: center;">
-        <a
-          href="${googleCalUrl}"
-          target="_blank"
-          style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;"
-        >
-          📅 Přidat do svého Kalendáře
-        </a>
+      <div style="background:#eff6ff;padding:16px;border-radius:8px;border-left:4px solid #2563eb;margin:20px 0;">
+        <p><strong>Služba:</strong> ${escapeHtml(serviceName)}</p>
+        <p><strong>Datum:</strong> ${escapeHtml(formattedDate)}</p>
+        <p><strong>Čas:</strong> ${escapeHtml(formattedTime)}</p>
+        <p><strong>Klient:</strong> ${escapeHtml(customerName)} (${escapeHtml(customerEmail)})</p>
+        <p><strong>Trenér:</strong> ${escapeHtml(trainerName)}</p>
       </div>
     </div>
   `;
 
-  const emailPromises: Promise<any>[] = [];
+  const promises: Promise<any>[] = [];
 
-  // E-mail klientovi
-  emailPromises.push(
-    resend.emails.send({
-      from: 'EMS Znojmo <registrace@emsznojmo.cz>',
-      to: [customerEmail],
-      subject: `Potvrzení rezervace: ${serviceName} – ${formattedDate}`,
-      html: customerHtml,
-      attachments: [
-        {
-          filename: 'rezervace-ems.ics',
-          content: icsBuffer,
-        },
-      ],
-    })
-  );
-
-  // Každému trenérovi vlastní e-mail
-  if (trainerEmails && trainerEmails.length > 0) {
-    for (const trainerEmail of trainerEmails) {
-      emailPromises.push(
-        resend.emails.send({
-          from: 'EMS Znojmo <registrace@emsznojmo.cz>',
-          to: [trainerEmail],
-          subject: `Nová rezervace: ${customerName} – ${formattedDate}`,
-          html: trainerHtml,
-          attachments: [
-            {
-              filename: 'rezervace-ems.ics',
-              content: icsBuffer,
-            },
-          ],
-        })
-      );
-    }
+  if (customerEmail) {
+    promises.push(
+      resend.emails.send({
+        from: 'EMS Znojmo <registrace@emsznojmo.cz>',
+        to: [customerEmail],
+        subject: `Potvrzení rezervace: ${serviceName} – ${formattedDate}`,
+        html: customerHtml,
+        attachments: [
+          {
+            filename: 'rezervace-ems.ics',
+            content: icsBuffer,
+          },
+        ],
+      })
+    );
   }
 
-  await Promise.all(emailPromises);
+  for (const trainerEmail of trainerEmails || []) {
+    if (!trainerEmail) continue;
+
+    promises.push(
+      resend.emails.send({
+        from: 'EMS Znojmo <registrace@emsznojmo.cz>',
+        to: [trainerEmail],
+        subject: `Nová rezervace: ${customerName} – ${formattedDate}`,
+        html: trainerHtml,
+        attachments: [
+          {
+            filename: 'rezervace-ems.ics',
+            content: icsBuffer,
+          },
+        ],
+      })
+    );
+  }
+
+  await Promise.all(promises);
 }
 
 /**
- * EMAILY PRO ZRUŠENÍ REZERVACE
- *
- * 1x klient
- * 1x každý trenér
+ * ZRUŠENÍ REZERVACE
  */
 export async function sendReservationCancellationEmails({
   customerEmail,
@@ -332,154 +274,112 @@ export async function sendReservationCancellationEmails({
 }: CancellationEmailProps) {
   const resend = getResendClient();
 
-  const safeCustomerName = escapeHtml(customerName);
-  const safeTrainerName = escapeHtml(trainerName);
-  const safeServiceName = escapeHtml(serviceName);
+  const formattedDate = formatDate(startTime);
+  const formattedTime = `${formatTime(startTime)} – ${formatTime(endTime)}`;
 
-  const formattedDate = startTime.toLocaleDateString('cs-CZ', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-
-  const formattedTime = `${startTime.toLocaleTimeString('cs-CZ', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })} – ${endTime.toLocaleTimeString('cs-CZ', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })}`;
+  const promises: Promise<any>[] = [];
 
   // -----------------------------------------
-  // EMAIL KLIENTOVI
+  // EMAIL UŽIVATELI
   // -----------------------------------------
 
-  const customerHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; color: #1f2937;">
-      <h2 style="color: #dc2626; margin-top: 0;">
-        Rezervace byla zrušena
-      </h2>
+  if (customerEmail) {
+    const customerHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:12px;color:#1f2937;">
+        <h2 style="color:#dc2626;margin-top:0;">
+          Rezervace byla zrušena
+        </h2>
 
-      <p>Ahoj <strong>${safeCustomerName}</strong>,</p>
-
-      <p>
-        tvoje rezervace byla úspěšně zrušena.
-      </p>
-
-      <div style="background-color: #fef2f2; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626;">
-        <p style="margin: 4px 0;">
-          <strong>Služba:</strong> ${safeServiceName}
+        <p>
+          Ahoj <strong>${escapeHtml(customerName)}</strong>,
         </p>
 
-        <p style="margin: 4px 0;">
-          <strong>Datum:</strong> ${escapeHtml(formattedDate)}
+        <p>
+          tvoje rezervace byla úspěšně zrušena.
         </p>
 
-        <p style="margin: 4px 0;">
-          <strong>Čas:</strong> ${escapeHtml(formattedTime)}
+        <div style="background:#fef2f2;padding:16px;border-radius:8px;border-left:4px solid #dc2626;margin:20px 0;">
+          <p><strong>Služba:</strong> ${escapeHtml(serviceName)}</p>
+          <p><strong>Datum:</strong> ${escapeHtml(formattedDate)}</p>
+          <p><strong>Čas:</strong> ${escapeHtml(formattedTime)}</p>
+          <p><strong>Trenér:</strong> ${escapeHtml(trainerName)}</p>
+        </div>
+
+        <p>
+          Kredit za tuto rezervaci byl vrácen zpět na tvůj účet.
         </p>
 
-        <p style="margin: 4px 0;">
-          <strong>Trenér:</strong> ${safeTrainerName}
+        <hr style="border:0;border-top:1px solid #e5e7eb;margin:20px 0;">
+
+        <p>
+          S pozdravem<br>
+          <strong>Tým EMS Znojmo</strong>
         </p>
       </div>
+    `;
 
-      <p>
-        Kredit za rezervaci byl vrácen zpět na tvůj účet.
-      </p>
-
-      <p>
-        Pokud budeš chtít, můžeš si vytvořit novou rezervaci.
-      </p>
-
-      <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-
-      <p style="margin-bottom: 0;">
-        S pozdravem<br>
-        <strong>Tým EMS Znojmo</strong>
-      </p>
-    </div>
-  `;
+    promises.push(
+      resend.emails.send({
+        from: 'EMS Znojmo <registrace@emsznojmo.cz>',
+        to: [customerEmail],
+        subject: `Zrušení rezervace: ${serviceName} – ${formattedDate}`,
+        html: customerHtml,
+      })
+    );
+  }
 
   // -----------------------------------------
   // EMAIL TRENÉRŮM
+  // KAŽDÝ TRENÉR DOSTANE VLASTNÍ EMAIL
   // -----------------------------------------
 
-  const trainerHtml = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; color: #1f2937;">
-      <h2 style="color: #dc2626; margin-top: 0;">
-        Rezervace byla zrušena
-      </h2>
+  for (const trainerEmail of trainerEmails || []) {
+    if (!trainerEmail) continue;
 
-      <p>Ahoj,</p>
+    const trainerHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:12px;color:#1f2937;">
+        <h2 style="color:#dc2626;margin-top:0;">
+          Rezervace byla zrušena
+        </h2>
 
-      <p>
-        rezervace klienta
-        <strong>${safeCustomerName}</strong>
-        byla zrušena.
-      </p>
+        <p>Ahoj,</p>
 
-      <div style="background-color: #fef2f2; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #dc2626;">
-        <p style="margin: 4px 0;">
-          <strong>Služba:</strong> ${safeServiceName}
+        <p>
+          rezervace klienta
+          <strong>${escapeHtml(customerName)}</strong>
+          byla zrušena.
         </p>
 
-        <p style="margin: 4px 0;">
-          <strong>Datum:</strong> ${escapeHtml(formattedDate)}
+        <div style="background:#fef2f2;padding:16px;border-radius:8px;border-left:4px solid #dc2626;margin:20px 0;">
+          <p><strong>Služba:</strong> ${escapeHtml(serviceName)}</p>
+          <p><strong>Datum:</strong> ${escapeHtml(formattedDate)}</p>
+          <p><strong>Čas:</strong> ${escapeHtml(formattedTime)}</p>
+          <p><strong>Klient:</strong> ${escapeHtml(customerName)}</p>
+          <p><strong>E-mail klienta:</strong> ${escapeHtml(customerEmail)}</p>
+          <p><strong>Trenér:</strong> ${escapeHtml(trainerName)}</p>
+        </div>
+
+        <p>
+          Tento termín je nyní opět volný.
         </p>
 
-        <p style="margin: 4px 0;">
-          <strong>Čas:</strong> ${escapeHtml(formattedTime)}
-        </p>
+        <hr style="border:0;border-top:1px solid #e5e7eb;margin:20px 0;">
 
-        <p style="margin: 4px 0;">
-          <strong>Klient:</strong>
-          ${safeCustomerName} (${escapeHtml(customerEmail)})
-        </p>
-
-        <p style="margin: 4px 0;">
-          <strong>Trenér:</strong> ${safeTrainerName}
+        <p>
+          <strong>EMS Znojmo</strong>
         </p>
       </div>
+    `;
 
-      <p>
-        Termín je nyní opět volný.
-      </p>
-
-      <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
-
-      <p style="margin-bottom: 0;">
-        <strong>EMS Znojmo</strong>
-      </p>
-    </div>
-  `;
-
-  const emailPromises: Promise<any>[] = [];
-
-  // 1. E-mail klientovi
-  emailPromises.push(
-    resend.emails.send({
-      from: 'EMS Znojmo <registrace@emsznojmo.cz>',
-      to: [customerEmail],
-      subject: `Zrušení rezervace: ${serviceName} – ${formattedDate}`,
-      html: customerHtml,
-    })
-  );
-
-  // 2. Samostatný e-mail každému trenérovi
-  if (trainerEmails && trainerEmails.length > 0) {
-    for (const trainerEmail of trainerEmails) {
-      emailPromises.push(
-        resend.emails.send({
-          from: 'EMS Znojmo <registrace@emsznojmo.cz>',
-          to: [trainerEmail],
-          subject: `Zrušená rezervace: ${customerName} – ${formattedDate}`,
-          html: trainerHtml,
-        })
-      );
-    }
+    promises.push(
+      resend.emails.send({
+        from: 'EMS Znojmo <registrace@emsznojmo.cz>',
+        to: [trainerEmail],
+        subject: `Zrušená rezervace: ${customerName} – ${formattedDate}`,
+        html: trainerHtml,
+      })
+    );
   }
 
-  await Promise.all(emailPromises);
+  await Promise.all(promises);
 }
