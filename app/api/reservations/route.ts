@@ -74,7 +74,10 @@ export async function POST(request: Request) {
 
       // Načteme trenéry, dostupnosti, výjimky a existující rezervace
       const [trainersRes, availRes, excRes, resRes] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, email').eq('role', 'TRAINER'),
+        supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email')
+          .in('role', ['TRAINER', 'ADMIN']),
         supabase.from('trainer_availability').select('*'),
         supabase.from('trainer_exceptions').select('*'),
         supabase.from('reservations').select('trainer_id, date, time').eq('date', date).in('status', ['CONFIRMED', 'PENDING'])
