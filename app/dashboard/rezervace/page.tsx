@@ -72,31 +72,78 @@ export default function ReservationsPage() {
     );
   }, [reservations]);
 
+  // ZRUŠENÍ REZERVACE A NAVRÁCENÍ KREDITU
   const handleCancelReservation = async (id: string) => {
     const res = reservations.find((r) => r.id === id);
-    if (res) {
-      const resDate = parseReservationDateTime(res.date, res.time).getTime();
-      const now = Date.now();
-      const hoursRemaining = (resDate - now) / (1000 * 60 * 60);
+    if (!res) return;
 
-      if (hoursRemaining < 24) {
-        alert('Tento trénink již nelze zrušit. Rezervaci je možné stornovat nejpozději 24 hodin před jejím začátkem.');
-        return;
-      }
+    // 1. Kontrola stornolhůty (24 hodin předem)
+    const resDate = parseReservationDateTime(res.date, res.time).getTime();
+    const now = Date.now();
+    const hoursRemaining = (resDate - now) / (1000 * 60 * 60);
+
+    if (hoursRemaining < 24) {
+      alert('Tento trénink již nelze zrušit. Rezervaci je možné stornovat nejpozději 24 hodin před jejím začátkem.');
+      return;
     }
 
-    const confirmCancel = confirm('Opravdu chceš zrušit tento termín tréninku?');
+    const confirmCancel = confirm('Opravdu chceš zrušit tento termín tréninku? Pokračováním ti bude vrácen 1 kredit.');
     if (!confirmCancel) return;
 
     setDeletingId(id);
-    const { error } = await supabase.from('reservations').delete().eq('id', id);
 
-    if (!error) {
+    try {
+      // 2. Načtení přihlášeného uživatele
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        alert('Uživatel neexistuje nebo vypršelo přihlášení.');
+        return;
+      }
+
+      // 3. Smazání rezervace z databáze
+      const { error: deleteError } = await supabase
+        .from('reservations')
+        .delete()
+        .eq('id', id);
+
+      if (deleteError) throw deleteError;
+
+      // 4. Načtení profilu uživatele pro přičtení kreditu
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('credit_balance')
+        .eq('id', authUser.id)
+        .single();
+
+      const currentCredits = userProfile?.credit_balance || 0;
+      const newCreditBalance = currentCredits + 1;
+
+      // Navýšení stavu kreditů
+      const { error: creditError } = await supabase
+        .from('profiles')
+        .update({ credit_balance: newCreditBalance })
+        .eq('id', authUser.id);
+
+      if (creditError) {
+        console.error('Chyba při vrácení kreditu:', creditError);
+      } else {
+        // Zapsání záznamu do historie transakcí
+        await supabase.from('credit_transactions').insert({
+          user_id: authUser.id,
+          amount: 1,
+          description: `Vrácení kreditu - zrušení tréninku (${res.date} v ${res.time})`,
+        });
+      }
+
+      // 5. Aktualizace lokálního seznamu v UI
       setReservations((prev) => prev.filter((r) => r.id !== id));
-    } else {
+      alert('Rezervace byla zrušena a 1 kredit byl úspěšně vrácen na tvůj účet.');
+
+    } catch (error: any) {
       alert('Chyba při rušení lekce: ' + error.message);
+    } finally {
+      setDeletingId(null);
     }
-    setDeletingId(null);
   };
 
   if (loading) {

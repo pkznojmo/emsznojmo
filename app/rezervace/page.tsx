@@ -84,7 +84,10 @@ export default function PublicLessonPage() {
   useEffect(() => {
     const loadPublicData = async () => {
       const [t, a, e, r] = await Promise.all([
-        supabase.from('profiles').select('id').eq('role', 'TRAINER'),
+        supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email')
+          .in('role', ['TRAINER', 'ADMIN']),
         supabase.from('trainer_availability').select('*'),
         supabase.from('trainer_exceptions').select('*'),
         supabase.from('reservations').select('trainer_id, date, time').in('status', ['CONFIRMED', 'PENDING'])

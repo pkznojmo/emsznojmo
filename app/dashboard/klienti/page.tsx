@@ -98,7 +98,7 @@ export default function TrainerDashboardPage() {
       const { data: trainersData } = await supabase
         .from('profiles')
         .select('id, first_name, last_name')
-        .eq('role', 'TRAINER');
+        .in('role', ['TRAINER', 'ADMIN'])
       if (trainersData) setAllTrainers(trainersData);
 
       // 2. Pravidelná dostupnost trenérů
@@ -181,8 +181,7 @@ export default function TrainerDashboardPage() {
         .eq('id', user.id)
         .single();
 
-      if (!profile || profile.role !== 'TRAINER') return router.push('/dashboard');
-      
+    if (!profile || !['TRAINER', 'ADMIN'].includes(profile.role)) return router.push('/dashboard');      
       setTrainerProfile(profile);
       fetchData(profile);
     };

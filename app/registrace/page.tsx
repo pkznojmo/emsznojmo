@@ -270,7 +270,7 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label htmlFor="birthDate" className="block text-sm font-semibold mb-2 text-gray-700">Datum narození</label>
+              <label htmlFor="birthDate" className="block text-sm font-semibold mb-2 text-gray-700">Datum narození*</label>
               <input
                 id="birthDate"
                 type="date"

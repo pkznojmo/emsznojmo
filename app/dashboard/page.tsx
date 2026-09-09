@@ -86,7 +86,7 @@ export default function DashboardPage() {
   const [myReservations, setMyReservations] = useState<Reservation[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Stavy pro trenéra
+  // Stavy pro trenéra / admina
   const [trainerClients, setTrainerClients] = useState<any[]>([]);
   const [unassignedBookings, setUnassignedBookings] = useState<any[]>([]);
   const [globalClientsStats, setGlobalClientsStats] = useState<{ [key: string]: any }>({});
@@ -144,8 +144,8 @@ export default function DashboardPage() {
 
       setMyReservations(myRes || []);
 
-      // 3. Pokud je TRENÉR, načti trenérská data
-      if (profileData.role === 'TRAINER') {
+      // 3. Pokud je TRENÉR nebo ADMIN, načti trenérská data
+      if (profileData.role === 'TRAINER' || profileData.role === 'ADMIN') {
         const { data: trainerRes } = await supabase
           .from('reservations')
           .select('*, profiles:user_id(first_name, last_name, birth_date)')
@@ -237,34 +237,99 @@ export default function DashboardPage() {
     }
   };
 
-  // Stornování lekce
-  const handleCancelReservation = async (id: string) => {
-    const res = myReservations.find((r) => r.id === id);
-    if (res) {
-      const resDate = parseReservationDateTime(res.date, res.time).getTime();
-      const now = Date.now();
-      const hoursRemaining = (resDate - now) / (1000 * 60 * 60);
+  // Stornování lekce + vrácení kreditu + notifikace trenéra
+const handleCancelReservation = async (id: string) => {
+  const res = myReservations.find((r) => r.id === id);
+  if (!res) return;
 
-      if (hoursRemaining < 24) {
-        alert('Tento trénink již nelze zrušit. Rezervaci je možné stornovat nejpozději 24 hodin před jejím začátkem.');
-        return;
+  // 1. Kontrola stornolhůty (24h)
+  const resDate = parseReservationDateTime(res.date, res.time).getTime();
+  const now = Date.now();
+  const hoursRemaining = (resDate - now) / (1000 * 60 * 60);
+
+  if (hoursRemaining < 24) {
+    alert('Tento trénink již nelze zrušit. Rezervaci je možné stornovat nejpozději 24 hodin před jejím začátkem.');
+    return;
+  }
+
+  if (!confirm('Opravdu chceš zrušit tento termín tréninku? Pokračováním ti bude vrácen 1 kredit.')) return;
+
+  setDeletingId(id);
+
+  try {
+    // 2. Načtení e-mailu trenéra (pokud je lekci přiřazen trainer_id)
+    let trainerEmail: string | null = null;
+    let trainerName = res.trainer || 'Trenér';
+
+    if (res.trainer_id) {
+      const { data: trainerProfile } = await supabase
+        .from('profiles')
+        .select('email, first_name, last_name')
+        .eq('id', res.trainer_id)
+        .single();
+
+      if (trainerProfile) {
+        trainerEmail = trainerProfile.email;
+        trainerName = `${trainerProfile.first_name || ''} ${trainerProfile.last_name || ''}`.trim() || trainerName;
       }
     }
 
-    if (!confirm('Opravdu chceš zrušit tento termín tréninku?')) return;
+    // 3. Smazání rezervace
+    const { error: deleteError } = await supabase.from('reservations').delete().eq('id', id);
+      if (deleteError) throw deleteError;
 
-    setDeletingId(id);
-    const { error } = await supabase.from('reservations').delete().eq('id', id);
+      // 4. Navrácení kreditu uživateli
+      const currentCredits = profile?.credit_balance ?? 0;
+      const newCreditBalance = currentCredits + 1;
 
-    if (!error) {
+      const { error: creditError } = await supabase
+        .from('profiles')
+        .update({ credit_balance: newCreditBalance })
+        .eq('id', profile?.id);
+
+      if (creditError) {
+        console.error('Chyba při přičítání kreditu:', creditError);
+      } else {
+        // Aktualizace lokálního stavu profilu
+        setProfile((prev) => (prev ? { ...prev, credit_balance: newCreditBalance } : null));
+
+        // Záznam do historie transakcí (credit_transactions)
+        await supabase.from('credit_transactions').insert({
+          user_id: profile?.id,
+          amount: 1,
+          description: `Vrácení kreditu za zrušenou lekci (${formatDate(res.date)} v ${res.time})`,
+        });
+      }
+
+      // 5. Aktualizace seznamu rezervací v UI
       setMyReservations((prev) => prev.filter((r) => r.id !== id));
-    } else {
-      alert('Chyba při rušení lekce: ' + error.message);
+
+      // 6. Odeslání e-mailu trenérovi (pokud máme e-mail trenéra)
+      if (trainerEmail) {
+        const clientName = `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim() || 'Klient';
+
+        await fetch('/api/cancel-reservation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trainerEmail,
+            trainerName,
+            clientName,
+            date: formatDate(res.date),
+            time: res.time,
+          }),
+        });
+      }
+
+      alert('Rezervace byla zrušena a 1 kredit byl navrácen na váš účet.');
+    } catch (err: any) {
+      alert('Chyba při rušení lekce: ' + err.message);
+    } finally {
+      setDeletingId(null);
     }
-    setDeletingId(null);
   };
 
-  // Převzetí lekce trenérem
+  // Převzetí lekce trenérem / adminem
   const handleClaimBooking = async (bookingId: string) => {
     if (!profile) return;
     const trainerName = `${profile.first_name} ${profile.last_name}`;
@@ -314,7 +379,8 @@ export default function DashboardPage() {
     );
   }
 
-  const isTrainer = profile?.role === 'TRAINER';
+  // Trenér i Admin uvidí stejné rozhraní
+  const isTrainer = profile?.role === 'TRAINER' || profile?.role === 'ADMIN';
 
   return (
     <div className="min-h-screen bg-gray-50/60 flex flex-col md:flex-row text-gray-900">
@@ -333,7 +399,7 @@ export default function DashboardPage() {
               </h1>
               {isTrainer ? (
                 <span className="bg-indigo-100 text-indigo-700 font-bold text-xs px-2.5 py-1 rounded-full uppercase tracking-wider">
-                  Trenér
+                  {profile?.role === 'ADMIN' ? 'Admin' : 'Trenér'}
                 </span>
               ) : (
                 <span className="bg-emerald-100 text-emerald-700 font-bold text-xs px-2.5 py-1 rounded-full uppercase tracking-wider">
@@ -462,10 +528,10 @@ export default function DashboardPage() {
         </div>
 
         {/* ========================================================================= */}
-        {/* SEKCE 2: HLAVNÍ OPERAČNÍ BLOK (PRO TRENÉRA / PRO KLIENTA) */}
+        {/* SEKCE 2: HLAVNÍ OPERAČNÍ BLOK (PRO TRENÉRA A ADMINA / PRO KLIENTA) */}
         {/* ========================================================================= */}
         {isTrainer ? (
-          /* ------------------- PRO TRENÉRA ------------------- */
+          /* ------------------- PRO TRENÉRA / ADMINA ------------------- */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white p-6 rounded-2xl border border-gray-200/80 shadow-sm space-y-4">
               <div className="flex justify-between items-center pb-3 border-b border-gray-100">
@@ -514,7 +580,7 @@ export default function DashboardPage() {
               <div className="flex justify-between items-center pb-3 border-b border-gray-100">
                 <h2 className="font-bold text-gray-900 text-base flex items-center gap-2">
                   <UserPlus className="text-orange-500" size={20} />
-                  Lekce ke převzetí (Bez trenéra)
+                  Lekce k převzetí (Bez trenéra)
                 </h2>
                 <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
                   {unassignedBookings.length}

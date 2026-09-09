@@ -99,7 +99,7 @@ export default function WeeklySchedulePage() {
         .eq('id', user.id)
         .single();
 
-      if (profErr || !profile || profile.role !== 'TRAINER') {
+      if (profErr || !profile || !['TRAINER', 'ADMIN'].includes(profile.role)) {
         router.push('/dashboard');
         return;
       }

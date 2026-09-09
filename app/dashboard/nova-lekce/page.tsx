@@ -131,7 +131,10 @@ export default function NewLessonPage() {
       });
 
       const [t, a, e, r] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, email').eq('role', 'TRAINER'),
+        supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email')
+          .in('role', ['TRAINER', 'ADMIN']),
         supabase.from('trainer_availability').select('*'),
         supabase.from('trainer_exceptions').select('*'),
         supabase.from('reservations').select('trainer_id, date, time, user_id').in('status', ['CONFIRMED', 'PENDING'])

@@ -56,7 +56,7 @@ export default function RegularSchedulePage() {
         .eq('id', user.id)
         .single();
 
-      if (profileError || !profile || profile.role !== 'TRAINER') {
+      if (profileError || !profile || !['TRAINER', 'ADMIN'].includes(profile.role)) {
         router.push('/dashboard');
         return;
       }
