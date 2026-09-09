@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-// Pokud máte připravenou funkci pro odesílání e-mailů o zrušení (např. v @/lib/emails)
-import { sendCancellationEmails } from '@/lib/emails';
+import { sendReservationEmails } from '@/lib/emails'; // Použijeme existující export
 
 export async function POST(request: Request) {
   try {
@@ -82,7 +81,7 @@ export async function POST(request: Request) {
       description: `Vrácení kreditu - zrušení rezervace (${reservation.date} v ${cleanTime})`,
     });
 
-    // 6. SMAZÁNÍ NEBO ZMĚNA STAVU REZERVACE
+    // 6. SMAZÁNÍ REZERVACE
     const { error: deleteError } = await supabase
       .from('reservations')
       .delete()
@@ -92,7 +91,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Chyba při mazání rezervace.' }, { status: 500 });
     }
 
-    // 7. ODESLÁNÍ NOTIFIKACE TRENÉROVI (volitelné)
+    // 7. ODESLÁNÍ NOTIFIKACE TRENÉROVI (využívá sendReservationEmails)
     if (reservation.trainer_id) {
       const { data: trainerProfile } = await supabase
         .from('profiles')
@@ -104,20 +103,21 @@ export async function POST(request: Request) {
         try {
           const clientName = `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim() || 'Klient';
           const trainerName = `${trainerProfile.first_name || ''} ${trainerProfile.last_name || ''}`.trim() || 'Trenér';
+          
+          const startTime = new Date(`${reservation.date}T${cleanTime}:00`);
+          let endTime = new Date(startTime.getTime() + 45 * 60 * 1000);
 
-          // Zavolání e-mailové funkce (pokud ji máte definovanou)
-          if (typeof sendCancellationEmails === 'function') {
-            await sendCancellationEmails({
-              trainerEmail: trainerProfile.email,
-              trainerName,
-              clientName,
-              date: reservation.date,
-              time: reservation.time,
-            });
-          }
+          await sendReservationEmails({
+            customerEmail: userProfile.email,
+            customerName: clientName,
+            trainerEmails: [trainerProfile.email],
+            trainerName: trainerName,
+            startTime,
+            endTime,
+            serviceName: 'Zrušený EMS Trénink',
+          });
         } catch (emailErr) {
           console.error('Chyba při odesílání storno e-mailu:', emailErr);
-          // Nehašíme celou odpověď, protože rezervace i kredity už proběhly v pořádku
         }
       }
     }
