@@ -72,79 +72,103 @@ export default function ReservationsPage() {
     );
   }, [reservations]);
 
-  // ZRUŠENÍ REZERVACE A NAVRÁCENÍ KREDITU
+  // ZRUŠENÍ REZERVACE + VRÁCENÍ KREDITU + EMAILY
   const handleCancelReservation = async (id: string) => {
     const res = reservations.find((r) => r.id === id);
+
     if (!res) return;
 
-    // 1. Kontrola stornolhůty (24 hodin předem)
-    const resDate = parseReservationDateTime(res.date, res.time).getTime();
+    // 1. Kontrola stornolhůty 24 hodin
+    const resDate = parseReservationDateTime(
+      res.date,
+      res.time
+    ).getTime();
+
     const now = Date.now();
-    const hoursRemaining = (resDate - now) / (1000 * 60 * 60);
+
+    const hoursRemaining =
+      (resDate - now) / (1000 * 60 * 60);
 
     if (hoursRemaining < 24) {
-      alert('Tento trénink již nelze zrušit. Rezervaci je možné stornovat nejpozději 24 hodin před jejím začátkem.');
+      alert(
+        'Tento trénink již nelze zrušit. Rezervaci je možné stornovat nejpozději 24 hodin před jejím začátkem.'
+      );
       return;
     }
 
-    const confirmCancel = confirm('Opravdu chceš zrušit tento termín tréninku? Pokračováním ti bude vrácen 1 kredit.');
+    const confirmCancel = confirm(
+      'Opravdu chceš zrušit tento termín tréninku?\n\nPokračováním ti bude vrácen 1 kredit.'
+    );
+
     if (!confirmCancel) return;
 
     setDeletingId(id);
 
     try {
-      // 2. Načtení přihlášeného uživatele
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+      // 2. Získání přihlášeného uživatele
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
       if (!authUser) {
-        alert('Uživatel neexistuje nebo vypršelo přihlášení.');
+        alert(
+          'Uživatel neexistuje nebo vypršelo přihlášení.'
+        );
         return;
       }
 
-      // 3. Smazání rezervace z databáze
-      const { error: deleteError } = await supabase
-        .from('reservations')
-        .delete()
-        .eq('id', id);
+      // 3. VOLÁNÍ API ROUTE
+      // TADY se nově spustí:
+      // app/api/cancel-reservation/route.ts
+      const response = await fetch(
+        '/api/cancel-reservation',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            reservation_id: id,
+            user_id: authUser.id,
+          }),
+        }
+      );
 
-      if (deleteError) throw deleteError;
+      const result = await response.json();
 
-      // 4. Načtení profilu uživatele pro přičtení kreditu
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('credit_balance')
-        .eq('id', authUser.id)
-        .single();
-
-      const currentCredits = userProfile?.credit_balance || 0;
-      const newCreditBalance = currentCredits + 1;
-
-      // Navýšení stavu kreditů
-      const { error: creditError } = await supabase
-        .from('profiles')
-        .update({ credit_balance: newCreditBalance })
-        .eq('id', authUser.id);
-
-      if (creditError) {
-        console.error('Chyba při vrácení kreditu:', creditError);
-      } else {
-        // Zapsání záznamu do historie transakcí
-        await supabase.from('credit_transactions').insert({
-          user_id: authUser.id,
-          amount: 1,
-          description: `Vrácení kreditu - zrušení tréninku (${res.date} v ${res.time})`,
-        });
+      // 4. Kontrola chyby z API
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+            'Nepodařilo se zrušit rezervaci.'
+        );
       }
 
-      // 5. Aktualizace lokálního seznamu v UI
-      setReservations((prev) => prev.filter((r) => r.id !== id));
-      alert('Rezervace byla zrušena a 1 kredit byl úspěšně vrácen na tvůj účet.');
+      // 5. Aktualizace UI
+      setReservations((prev) =>
+        prev.filter((r) => r.id !== id)
+      );
 
+      alert(
+        result?.message ||
+          'Rezervace byla úspěšně zrušena a 1 kredit byl vrácen.'
+      );
     } catch (error: any) {
-      alert('Chyba při rušení lekce: ' + error.message);
+      console.error(
+        'Chyba při rušení rezervace:',
+        error
+      );
+
+      alert(
+        'Chyba při rušení lekce: ' +
+          (error?.message ||
+            'Neznámá chyba')
+      );
     } finally {
       setDeletingId(null);
     }
   };
+
 
   if (loading) {
     return (
