@@ -23,6 +23,7 @@ interface Trainer {
   id: string;
   first_name: string;
   last_name: string;
+  role: string;
 }
 
 type ModalType = 'CREDIT' | 'QR' | 'RESERVATION' | null;
@@ -81,11 +82,11 @@ export default function AdminUsersPage() {
 
       if (usersData) setUsers(usersData);
 
-      // Načtení trenérů pro rezervační modál
+      // Načtení trenérů a adminů pro rezervační modál (Role TRAINER nebo ADMIN)
       const { data: trainersData } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name')
-        .eq('role', 'TRAINER');
+        .select('id, first_name, last_name, role')
+        .in('role', ['TRAINER', 'ADMIN']);
 
       if (trainersData) setTrainers(trainersData);
 
@@ -104,6 +105,33 @@ export default function AdminUsersPage() {
       return fullName.includes(q) || email.includes(q);
     });
   }, [users, searchQuery]);
+
+  // Akce: Změna role uživatele
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role: newRole })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      // Aktualizace lokálního stavu uživatelů
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      
+      // Pokud se měnili trenéři/admini, aktualizujeme i seznam trenérů pro rezervace
+      const { data: trainersData } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, role')
+        .in('role', ['TRAINER', 'ADMIN']);
+
+      if (trainersData) setTrainers(trainersData);
+
+      alert('Role byla úspěšně změněna.');
+    } catch (err: any) {
+      alert('Chyba při změně role: ' + err.message);
+    }
+  };
 
   // Akce: Otevření modálu
   const openModal = (type: ModalType, user: UserProfile) => {
@@ -191,7 +219,7 @@ export default function AdminUsersPage() {
         });
       }
 
-      // Nalezení jména trenéra
+      // Nalezení jména trenéra/admina
       const selectedTrainer = trainers.find(t => t.id === resTrainerId);
       const trainerName = selectedTrainer 
         ? `${selectedTrainer.first_name || ''} ${selectedTrainer.last_name || ''}`.trim() 
@@ -248,7 +276,7 @@ export default function AdminUsersPage() {
               <span className="text-sm font-bold text-rose-600 tracking-wider uppercase">Admin Zóna</span>
             </div>
             <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 tracking-tight">Správa uživatelů</h1>
-            <p className="text-gray-500 mt-2">Přehled všech registrovaných klientů a trenérů v systému.</p>
+            <p className="text-gray-500 mt-2">Přehled všech registrovaných klientů, VIP, trenérů a adminů v systému.</p>
           </div>
           
           <div className="relative w-full md:w-80">
@@ -271,7 +299,7 @@ export default function AdminUsersPage() {
                 <tr>
                   <th className="px-6 py-4">Uživatel</th>
                   <th className="px-6 py-4">Kontakty</th>
-                  <th className="px-6 py-4">Role</th>
+                  <th className="px-6 py-4">Role (Změna)</th>
                   <th className="px-6 py-4 text-center">Kredity</th>
                   <th className="px-6 py-4 text-right">Rychlé akce</th>
                 </tr>
@@ -301,13 +329,21 @@ export default function AdminUsersPage() {
                         {user.email}
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase ${
-                          user.role === 'ADMIN' ? 'bg-rose-100 text-rose-700' :
-                          user.role === 'TRAINER' ? 'bg-blue-100 text-blue-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {user.role || 'CLIENT'}
-                        </span>
+                        <select
+                          value={user.role || 'CLIENT'}
+                          onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold tracking-wide uppercase border outline-none cursor-pointer transition-colors ${
+                            user.role === 'ADMIN' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                            user.role === 'TRAINER' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                            user.role === 'VIP' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                            'bg-gray-50 text-gray-700 border-gray-200'
+                          }`}
+                        >
+                          <option value="CLIENT">CLIENT</option>
+                          <option value="VIP">VIP</option>
+                          <option value="TRAINER">TRAINER</option>
+                          <option value="ADMIN">ADMIN</option>
+                        </select>
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 font-bold rounded-lg border border-emerald-100">
@@ -445,7 +481,7 @@ export default function AdminUsersPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 mb-1">Přiřadit trenéra (volitelné)</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Přiřadit trenéra / admina (volitelné)</label>
                   <select
                     value={resTrainerId}
                     onChange={(e) => setResTrainerId(e.target.value)}
@@ -453,7 +489,9 @@ export default function AdminUsersPage() {
                   >
                     <option value="">-- Jakýkoliv trenér / Nepřiřazeno --</option>
                     {trainers.map(t => (
-                      <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>
+                      <option key={t.id} value={t.id}>
+                        {t.first_name} {t.last_name} {t.role === 'ADMIN' ? '(Admin)' : ''}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -484,7 +522,6 @@ export default function AdminUsersPage() {
             {activeModal === 'QR' && selectedUser && (
               <div className="p-8 flex flex-col items-center justify-center text-center space-y-4">
                 <div className="p-4 bg-white border-2 border-gray-100 rounded-2xl shadow-sm">
-                  {/* Použití bezplatného externího API pro generování QR kódu (Nevyžaduje instalaci npm balíčku) */}
                   <img 
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(selectedUser.id)}`} 
                     alt="QR Kód klienta"
