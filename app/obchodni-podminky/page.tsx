@@ -83,8 +83,6 @@ export default function ObchodniPodminkyPage() {
               </p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>Bezhotovostně platební kartou online přes platební bránu.</li>
-                <li>Bankovním převodem na účet provozovatele č. [Doplnit číslo účtu].</li>
-                <li>H hotovostně či kartou na místě (je-li tato možnost nabízena).</li>
               </ul>
             </section>
 
