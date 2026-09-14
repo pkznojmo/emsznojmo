@@ -46,12 +46,11 @@ export default function ObchodniPodminkyPage() {
               </p>
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 text-sm space-y-1">
                 <p className="font-semibold text-slate-900">Identifikační údaje provozovatele:</p>
-                <p><strong>Název / Jméno:</strong> [Doplnit název firmy / OSVČ]</p>
-                <p><strong>Sídlo / Adresa:</strong> [Doplnit adresu]</p>
-                <p><strong>IČO:</strong> [Doplnit IČO]</p>
-                <p><strong>DIČ:</strong> [Doplnit DIČ / NEJSME PLÁTCI DPH]</p>
-                <p><strong>E-mail:</strong> [Doplnit kontaktní email]</p>
-                <p><strong>Telefon:</strong> [Doplnit telefonní číslo]</p>
+                <p><strong>Název / Jméno:</strong> Plavekcý klub Znojmo z.s.</p>
+                <p><strong>Sídlo / Adresa:</strong> Marušky Kudeříkové 622/8, Znojmo 66902, Česká republika</p>
+                <p><strong>IČO:</strong> 06441254</p>
+                <p><strong>E-mail:</strong> info@pkznojmo.cz</p>
+                <p><strong>Telefon:</strong> +420777535302</p>
               </div>
               <p>
                 1.2. Veškeré smluvní vztahy se řídí právním řádem České republiky, zejména zákonem č. 89/2012 Sb., občanský zákoník, ve znění pozdějších předpisů, a zákonem č. 634/1992 Sb., o ochraně spotřebitele.
