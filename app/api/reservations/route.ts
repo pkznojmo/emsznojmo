@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendReservationEmails } from '@/lib/emails';
 
-// Pomocná funkce pro převod času "HH:MM" na minuty
 const timeToMin = (t: string): number => {
   const [h, m] = t.trim().split(':').map(Number);
   return h * 60 + m;
@@ -25,7 +24,7 @@ export async function POST(request: Request) {
       trainer_id,
       date,          // Formát: "YYYY-MM-DD"
       time,          // Formát: "14:00" nebo "14:00 - 14:45"
-      trainerName,   // Jméno trenéra (např. "Jan Novák" nebo "Jakýkoliv trenér")
+      trainerName,   // Jméno trenéra
       customerName,  
       customerEmail, 
       trainerEmails, // Pole e-mailů z frontendu
@@ -37,7 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Vyplňte prosím všechna povinná pole.' }, { status: 400 });
     }
 
-    // 2. KONTROLA A ODEČTENÍ KREDITU UŽIVATELE
+    // 2. KONTROLA A ODEČTENÍ KREDITU UŽIVAETLE
     const { data: userProfile, error: profileError } = await supabase
       .from('profiles')
       .select('credit_balance')
@@ -54,25 +53,23 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // 3. Výpočet startovního a koncového času v minutách pro kontrolu dostupnosti
+    // 3. Výpočet startovního a koncového času
     const cleanTime = time.split('-')[0].trim();
     const slotStartMin = timeToMin(cleanTime);
 
-    let slotEndMin = slotStartMin + 45; // Výchozí délka 45 min
+    let slotEndMin = slotStartMin + 45;
     if (time.includes('-')) {
       const endTimeStr = time.split('-')[1].trim();
       slotEndMin = timeToMin(endTimeStr);
     }
 
-    // 4. URČENÍ CÍLOVÝCH E-MAILŮ TRENÉRŮ (Filtrování volných)
+    // 4. URČENÍ CÍLOVÝCH E-MAILŮ TRENÉRŮ
     let finalTrainerEmails: string[] = [];
 
     if (!trainer_id || trainerName === 'Jakýkoliv trenér') {
-      // Bezpečné načtení dne v týdnu z datumu
       const [yr, mo, dy] = date.split('-').map(Number);
       const dayOfWeek = new Date(yr, mo - 1, dy).getDay();
 
-      // Načteme trenéry, dostupnosti, výjimky a existující rezervace
       const [trainersRes, availRes, excRes, resRes] = await Promise.all([
         supabase
           .from('profiles')
@@ -88,9 +85,7 @@ export async function POST(request: Request) {
       const exceptions = excRes.data || [];
       const existingReservations = resRes.data || [];
 
-      // Filtrujeme pouze trenéry, kteří jsou v daný slot VOLNÍ
       const availableTrainers = allTrainers.filter(t => {
-        // Pravidelná dostupnost
         const hasAvailability = availabilities.some(a => 
           a.trainer_id === t.id && 
           a.day_of_week === dayOfWeek && 
@@ -98,7 +93,6 @@ export async function POST(request: Request) {
           timeToMin(a.end_time) >= slotEndMin
         );
 
-        // Výjimka - Dostupné navíc
         const hasExtra = exceptions.some(e => 
           e.trainer_id === t.id && 
           e.date === date && 
@@ -107,7 +101,6 @@ export async function POST(request: Request) {
           timeToMin(e.end_time) >= slotEndMin
         );
 
-        // Výjimka - Nedostupný
         const isUnavailable = exceptions.some(e => 
           e.trainer_id === t.id && 
           e.date === date && 
@@ -118,7 +111,6 @@ export async function POST(request: Request) {
 
         if ((!hasAvailability && !hasExtra) || isUnavailable) return false;
 
-        // Kontrola překryvu s jinou rezervací trenéra
         const isBusy = existingReservations.some(r => {
           if (r.trainer_id !== t.id) return false;
           let rStartMin = 0;
@@ -145,7 +137,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Pro tento čas není k dispozici žádný volný trenér.' }, { status: 400 });
       }
     } else {
-      // Pokud byl vybrán konkrétní trenér
       if (Array.isArray(trainerEmails)) {
         finalTrainerEmails = trainerEmails.filter((e): e is string => Boolean(e));
       } else if (typeof trainerEmails === 'string' && trainerEmails) {
@@ -167,7 +158,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Chyba při strhávání kreditů.' }, { status: 500 });
     }
 
-    // Záznam do historie kreditů
+    // Záznam do historie kreditů (pokud tabulka existuje)
     await supabase.from('credit_transactions').insert({
       user_id: user_id,
       amount: -1,
@@ -183,7 +174,7 @@ export async function POST(request: Request) {
           trainer_id: trainer_id || null,
           date: date,
           time: time,
-          trainer: trainerName || 'Trenér EMS',
+          trainer: trainerName || 'Jakýkoliv trenér',
           status: 'CONFIRMED',
         },
       ])
@@ -192,6 +183,12 @@ export async function POST(request: Request) {
 
     if (dbError) {
       console.error('DB Error při rezervaci:', dbError);
+      // Vracení kreditu v případě selhání uložení
+      await supabase
+        .from('profiles')
+        .update({ credit_balance: userProfile.credit_balance })
+        .eq('id', user_id);
+
       return NextResponse.json({ error: 'Chyba při ukládání rezervace do databáze.' }, { status: 500 });
     }
 
@@ -211,7 +208,7 @@ export async function POST(request: Request) {
       customerEmail,
       customerName: customerName || 'Klient',
       trainerEmails: finalTrainerEmails,
-      trainerName: trainerName || 'Trenér',
+      trainerName: trainerName || 'Jakýkoliv trenér',
       startTime,
       endTime,
       serviceName: serviceName || 'EMS Trénink',

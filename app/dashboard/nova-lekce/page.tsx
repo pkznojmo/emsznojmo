@@ -4,7 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Sidebar from '../../comp/Sidebar';
-import { Calendar as CalendarIcon, Clock, User, ChevronLeft, ChevronRight, Info, Coins, AlertCircle, ArrowRight } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, User, ChevronLeft, ChevronRight, Info, Coins, AlertCircle, ArrowRight, X, Check, Users } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 
 interface DbTrainer { id: string; first_name: string; last_name: string; email?: string; }
@@ -36,7 +36,7 @@ const getNextTimeSlot = (time: string): string => {
     nextMinutes -= 60;
     nextHours += 1;
   }
-  return `${nextHours.toString().padStart(2, '0')}:${nextMinutes.toString().padStart(2, '0')}`;
+  return `${nextHours.toString().padStart(2, '0')}:${nextHours.toString().padStart(2, '0')}`;
 };
 
 const calculateFirstLessonEndTime = (startTime: string): string => {
@@ -67,6 +67,11 @@ export default function NewLessonPage() {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [selectedTrainer, setSelectedTrainer] = useState('Jakýkoliv trenér');
+
+  // Stavy pro vyskakovací okno při více dostupných trenérech
+  const [isTrainerModalOpen, setIsTrainerModalOpen] = useState(false);
+  const [modalAvailableTrainers, setModalAvailableTrainers] = useState<DbTrainer[]>([]);
+  const [tempSelectedTrainerId, setTempSelectedTrainerId] = useState<string>('ANY');
 
   const upcomingDays = useMemo(() => {
     const days = [];
@@ -116,7 +121,6 @@ export default function NewLessonPage() {
       if (!authUser) { router.push('/prihlaseni'); return; }
       setUserId(authUser.id);
 
-      // Načtení profilu včetně kreditů
       const { data: profile } = await supabase
         .from('profiles')
         .select('first_name, last_name, email, credit_balance')
@@ -246,37 +250,22 @@ export default function NewLessonPage() {
     return day ? (day.isToday || day.isPast) : false;
   }, [selectedDate, upcomingDays]);
 
-  const handleBooking = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const submitReservation = async (
+    targetTrainerId: string | null,
+    trainerFullName: string,
+    trainerEmails: string[]
+  ) => {
     if (!selectedTime || !selectedDate || !userId || intentToBookTodayOrPast) return;
 
     if ((userProfile?.credit_balance ?? 0) < 1) {
       setError('Nemáte dostatek kreditů pro provedení rezervace.');
       return;
     }
-    
+
     setSubmitting(true);
     setError('');
 
     try {
-      const currentSlot = timeSlotsWithStatus.find(s => s.time === selectedTime);
-      if (!currentSlot || currentSlot.isUnavailable) {
-        throw new Error('Tento čas se mezitím obsadil nebo není k dispozici.');
-      }
-
-      let targetTrainerId: string | null = null;
-      let trainerFullName = 'Jakýkoliv trenér';
-      let trainerEmails: string[] = [];
-
-      if (selectedTrainer !== 'Jakýkoliv trenér') {
-        const t = trainers.find(trainer => trainer.id === selectedTrainer);
-        if (t) {
-          targetTrainerId = t.id;
-          trainerFullName = `${t.first_name} ${t.last_name}`;
-          if (t.email) trainerEmails.push(t.email);
-        }
-      }
-
       const customerFullName = `${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim() || 'Klient EMS';
       const customerEmail = userProfile?.email || '';
 
@@ -310,7 +299,66 @@ export default function NewLessonPage() {
       router.push('/dashboard/rezervace');
     } catch (err: any) {
       setError(err.message || 'Při ukládání rezervace došlo k chybě.');
+    } finally {
       setSubmitting(false);
+      setIsTrainerModalOpen(false);
+    }
+  };
+
+  const handleBooking = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedTime || !selectedDate || !userId || intentToBookTodayOrPast) return;
+
+    if ((userProfile?.credit_balance ?? 0) < 1) {
+      setError('Nemáte dostatek kreditů pro provedení rezervace.');
+      return;
+    }
+
+    const currentSlot = timeSlotsWithStatus.find(s => s.time === selectedTime);
+    if (!currentSlot || currentSlot.isUnavailable) {
+      setError('Tento čas se mezitím obsadil nebo není k dispozici.');
+      return;
+    }
+
+    if (selectedTrainer === 'Jakýkoliv trenér' && currentSlot.availableTrainers.length > 1) {
+      setModalAvailableTrainers(currentSlot.availableTrainers);
+      setTempSelectedTrainerId('ANY');
+      setIsTrainerModalOpen(true);
+      return;
+    }
+
+    let targetTrainerId: string | null = null;
+    let trainerFullName = 'Jakýkoliv trenér';
+    let trainerEmails: string[] = [];
+
+    if (selectedTrainer !== 'Jakýkoliv trenér') {
+      const t = trainers.find(trainer => trainer.id === selectedTrainer);
+      if (t) {
+        targetTrainerId = t.id;
+        trainerFullName = `${t.first_name} ${t.last_name}`;
+        if (t.email) trainerEmails.push(t.email);
+      }
+    } else if (currentSlot.availableTrainers.length === 1) {
+      const t = currentSlot.availableTrainers[0];
+      targetTrainerId = t.id;
+      trainerFullName = `${t.first_name} ${t.last_name}`;
+      if (t.email) trainerEmails.push(t.email);
+    }
+
+    await submitReservation(targetTrainerId, trainerFullName, trainerEmails);
+  };
+
+  const handleModalConfirm = async () => {
+    if (tempSelectedTrainerId === 'ANY') {
+      await submitReservation(null, 'Jakýkoliv trenér', []);
+    } else {
+      const chosen = modalAvailableTrainers.find(t => t.id === tempSelectedTrainerId);
+      if (chosen) {
+        const emails = chosen.email ? [chosen.email] : [];
+        await submitReservation(chosen.id, `${chosen.first_name} ${chosen.last_name}`, emails);
+      } else {
+        await submitReservation(null, 'Jakýkoliv trenér', []);
+      }
     }
   };
 
@@ -321,7 +369,6 @@ export default function NewLessonPage() {
       <Sidebar onLogout={async () => { await supabase.auth.signOut(); router.push('/prihlaseni'); }} />
       <main className="flex-1 p-4 md:p-10 max-w-5xl mx-auto w-full">
         
-        {/* HLAVIČKA A KREDITY */}
         <header className="mb-6 md:mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900">Rezervace tréninku ⚡</h1>
@@ -343,7 +390,6 @@ export default function NewLessonPage() {
           </div>
         </header>
 
-        {/* UPOZORNĚNÍ: NEDOSTATEK KREDITŮ */}
         {hasNoCredits && (
           <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-4 md:p-5 flex items-start gap-4 text-amber-900">
             <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
@@ -365,7 +411,6 @@ export default function NewLessonPage() {
         {error && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-600 font-bold text-sm">{error}</div>}
 
         <div className="space-y-8 md:space-y-10">
-          {/* 1. VÝBĚR TRENÉRA */}
           <section>
             <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
               <User size={14} /> 1. Výběr trenéra
@@ -389,7 +434,6 @@ export default function NewLessonPage() {
             </div>
           </section>
 
-          {/* 2. VÝBĚR DNE */}
           <section>
             <div className="flex sm:items-center justify-between mb-3">
               <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
@@ -451,7 +495,6 @@ export default function NewLessonPage() {
             </div>
           </section>
 
-          {/* 3. DOSTUPNÁ OKNA */}
           <section>
             <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
               <Clock size={14} /> 3. Dostupná okna
@@ -519,7 +562,6 @@ export default function NewLessonPage() {
             </div>
           </section>
 
-          {/* POTVRZOVACÍ TLAČÍTKO */}
           <button 
             onClick={() => handleBooking()}
             disabled={!selectedTime || submitting || intentToBookTodayOrPast || hasNoCredits} 
@@ -537,6 +579,99 @@ export default function NewLessonPage() {
           </button>
         </div>
       </main>
+
+      {isTrainerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-100 space-y-6 relative">
+            <button 
+              onClick={() => setIsTrainerModalOpen(false)}
+              className="absolute top-5 right-5 text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition"
+              title="Zavřít"
+            >
+              <X size={20} />
+            </button>
+
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mb-3">
+                <Users size={24} />
+              </div>
+              <h3 className="text-xl font-black text-gray-900">Vyberte si trenéra pro váš trénink</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                V čase <strong className="text-gray-800">{selectedTime}</strong> je k dispozici více trenérů. Chcete si vybrat konkrétního, nebo je vám to jedno?
+              </p>
+            </div>
+
+            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+              <button
+                type="button"
+                onClick={() => setTempSelectedTrainerId('ANY')}
+                className={`w-full p-4 rounded-2xl border-2 flex items-center justify-between transition-all text-left ${
+                  tempSelectedTrainerId === 'ANY'
+                    ? 'border-emerald-600 bg-emerald-50/60 text-emerald-900 shadow-sm'
+                    : 'border-gray-100 bg-gray-50 hover:border-gray-200 text-gray-700'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${tempSelectedTrainerId === 'ANY' ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+                    <Users size={16} />
+                  </div>
+                  <div>
+                    <div className="font-extrabold text-sm">Je mi to jedno</div>
+                    <div className="text-[11px] text-gray-500">Trénink si přitáhne libovolný volný trenér</div>
+                  </div>
+                </div>
+                {tempSelectedTrainerId === 'ANY' && <Check className="w-5 h-5 text-emerald-600 shrink-0" />}
+              </button>
+
+              {modalAvailableTrainers.map((t) => {
+                const isSelected = tempSelectedTrainerId === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setTempSelectedTrainerId(t.id)}
+                    className={`w-full p-4 rounded-2xl border-2 flex items-center justify-between transition-all text-left ${
+                      isSelected
+                        ? 'border-emerald-600 bg-emerald-50/60 text-emerald-900 shadow-sm'
+                        : 'border-gray-100 bg-gray-50 hover:border-gray-200 text-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs ${isSelected ? 'bg-emerald-600 text-white' : 'bg-gray-200 text-gray-600'}`}>
+                        {t.first_name?.[0] || 'T'}
+                      </div>
+                      <div>
+                        <div className="font-extrabold text-sm">{t.first_name} {t.last_name}</div>
+                        <div className="text-[11px] text-gray-500">Přímá rezervace ke konkrétnímu trenérovi</div>
+                      </div>
+                    </div>
+                    {isSelected && <Check className="w-5 h-5 text-emerald-600 shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setIsTrainerModalOpen(false)}
+                className="px-5 py-3 rounded-xl border border-gray-200 text-xs font-bold text-gray-600 hover:bg-gray-50 transition"
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={handleModalConfirm}
+                className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-md shadow-emerald-100 transition disabled:opacity-50"
+              >
+                {submitting ? 'Ukládám...' : 'Potvrdit a rezervovat (-1 kredit)'}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
