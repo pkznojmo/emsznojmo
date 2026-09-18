@@ -15,8 +15,10 @@ export default function LoginPage() {
   // Kontrola, zda je uživatel již přihlášen
   useEffect(() => {
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (session) {
         window.location.href = '/dashboard';
       } else {
@@ -27,7 +29,9 @@ export default function LoginPage() {
     checkUser();
 
     // Posluchač změn stavu autentizace
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         window.location.href = '/dashboard';
       }
@@ -36,26 +40,36 @@ export default function LoginPage() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 1. Přihlášení uživatele
+  // Přihlášení uživatele
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
     setError('');
     setSuccess('');
     setLoading(true);
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { error: authError } =
+        await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
       if (authError) {
-        if (authError.message.includes('Invalid login credentials')) {
+        if (
+          authError.message.includes('Invalid login credentials')
+        ) {
           throw new Error('Nesprávný e-mail nebo heslo.');
         }
-        if (authError.message.includes('Email not confirmed')) {
-          throw new Error('Tvůj e-mail ještě nebyl ověřen. Klikni na odkaz, který jsme ti poslali.');
+
+        if (
+          authError.message.includes('Email not confirmed')
+        ) {
+          throw new Error(
+            'Tvůj e-mail ještě nebyl ověřen. Klikni na odkaz, který jsme ti poslali.'
+          );
         }
+
         throw new Error(authError.message);
       }
 
@@ -67,30 +81,37 @@ export default function LoginPage() {
     }
   };
 
-  // 2. Odeslání žádosti o reset hesla
+  // Odeslání žádosti o reset hesla
   const handleForgotPassword = async () => {
     setError('');
     setSuccess('');
 
     if (!email) {
-      setError('Nejdříve vyplň svůj e-mail nahoru do pole.');
+      setError(
+        'Nejdříve vyplň svůj e-mail nahoru do pole.'
+      );
       return;
     }
 
     setResetLoading(true);
 
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/callback?next=/obnova-hesla`,
-      });
+      const { error: resetError } =
+        await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth/callback?next=/obnova-hesla`,
+        });
 
       if (resetError) {
         throw new Error(resetError.message);
       }
 
-      setSuccess('E-mail s odkazem pro obnovu hesla byl úspěšně odeslán! Zkontroluj si schránku.');
+      setSuccess(
+        'E-mail s odkazem pro obnovu hesla byl úspěšně odeslán! Zkontroluj si schránku.'
+      );
     } catch (err: any) {
-      setError('Chyba při odesílání e-mailu: ' + err.message);
+      setError(
+        'Chyba při odesílání e-mailu: ' + err.message
+      );
     } finally {
       setResetLoading(false);
     }
@@ -101,10 +122,27 @@ export default function LoginPage() {
     return (
       <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center p-6">
         <div className="flex items-center gap-3 text-emerald-600 font-semibold">
-          <svg className="animate-spin h-6 w-6 text-emerald-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          <svg
+            className="animate-spin h-6 w-6 text-emerald-600"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
           </svg>
+
           Načítám...
         </div>
       </div>
@@ -114,8 +152,15 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 flex items-center justify-center p-6">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-200">
-        <h1 className="text-3xl font-bold mb-2 text-center text-emerald-600">Přihlášení</h1>
-        <p className="text-gray-500 text-center mb-8">Vítej zpět! Přihlas se do svého účtu EMS.</p>
+
+        {/* Nadpis */}
+        <h1 className="text-3xl font-bold mb-2 text-center text-emerald-600">
+          Přihlášení
+        </h1>
+
+        <p className="text-gray-500 text-center mb-8">
+          Vítej zpět! Přihlas se do svého účtu EMS.
+        </p>
 
         {/* Chybová hláška */}
         {error && (
@@ -124,52 +169,106 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Informace o úspěšném odeslání e-mailu */}
+        {/* Úspěšná hláška */}
         {success && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-4 rounded-xl mb-6 text-sm text-center font-medium">
             {success}
           </div>
         )}
 
-        <form onSubmit={handleLogin} method="POST" action="#" className="space-y-5">
-          {/* Email */}
+        {/* 
+          DŮLEŽITÉ PRO PASSWORD MANAGERY:
+          - autoComplete="on"
+          - žádné action="#"
+          - správné name atributy
+          - username + current-password
+        */}
+        <form
+          onSubmit={handleLogin}
+          method="post"
+          autoComplete="on"
+          className="space-y-5"
+        >
+
+          {/* E-mail */}
           <div>
-            <label htmlFor="email" className="block text-sm font-semibold mb-2 text-gray-700">E-mail</label>
+            <label
+              htmlFor="email"
+              className="block text-sm font-semibold mb-2 text-gray-700"
+            >
+              E-mail
+            </label>
+
             <input
               id="email"
               name="email"
               type="email"
               required
+
+              // Klíčové pro iCloud Keychain,
+              // Chrome Password Manager a další password managery
               autoComplete="username"
+
+              // Lepší chování na iPhonu/iPadu
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              inputMode="email"
+
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+
               className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+
               placeholder="jan.novak@email.cz"
             />
           </div>
 
-          {/* Heslo + zapomenuté heslo odkaz */}
+          {/* Heslo */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label htmlFor="password" className="text-sm font-semibold text-gray-700">Heslo</label>
+
+              <label
+                htmlFor="password"
+                className="text-sm font-semibold text-gray-700"
+              >
+                Heslo
+              </label>
+
               <button
                 type="button"
                 onClick={handleForgotPassword}
                 disabled={resetLoading}
                 className="text-xs text-emerald-600 hover:underline font-semibold disabled:opacity-50"
               >
-                {resetLoading ? 'Odesílám...' : 'Zapomněl(a) jsi heslo?'}
+                {resetLoading
+                  ? 'Odesílám...'
+                  : 'Zapomněl(a) jsi heslo?'}
               </button>
             </div>
+
             <input
               id="password"
               name="password"
               type="password"
               required
+
+              // KLÍČOVÉ:
+              // current-password = existující heslo
+              // Password managery podle toho poznají,
+              // že mají nabídnout uložené heslo.
               autoComplete="current-password"
+
+              // Lepší kompatibilita s mobilními zařízeními
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+
               className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:border-emerald-500 focus:bg-white transition"
+
               placeholder="••••••••"
             />
           </div>
@@ -182,10 +281,28 @@ export default function LoginPage() {
           >
             {loading ? (
               <>
-                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  className="animate-spin h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
                 </svg>
+
                 Ověřuji údaje...
               </>
             ) : (
@@ -197,9 +314,12 @@ export default function LoginPage() {
         {/* Odkaz na registraci */}
         <div className="mt-6 text-center text-sm text-gray-500">
           Nemáš ještě účet?{' '}
+
           <button
             type="button"
-            onClick={() => { window.location.href = '/registrace'; }}
+            onClick={() => {
+              window.location.href = '/registrace';
+            }}
             className="text-emerald-600 font-semibold hover:underline"
           >
             Zaregistruj se
