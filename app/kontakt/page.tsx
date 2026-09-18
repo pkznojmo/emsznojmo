@@ -1,5 +1,17 @@
 import Link from 'next/link';
-import { ArrowLeft, Phone, Mail, MapPin, Clock, Calendar, ShieldCheck, Award, Heart, UserCheck, Waves, Car, CheckCircle2 } from 'lucide-react';
+import { 
+  Phone, 
+  Mail, 
+  MapPin, 
+  Clock, 
+  Calendar, 
+  Award, 
+  Heart, 
+  UserCheck, 
+  Waves, 
+  CheckCircle2, 
+  Building2 
+} from 'lucide-react';
 
 export default function ContactPage() {
   
@@ -10,7 +22,9 @@ export default function ContactPage() {
       role: "Certifikovaný trenér",
       specialization: "Ve vývoji",
       credo: "Ve vývoji",
-      image: "https://emsznojmo.cz/logo.svg"
+      image: "/David.jpg",
+      phone: "+420 724 506 433",
+      email: "info@pkznojmo.cz"
     },
     {
       id: 2,
@@ -18,7 +32,9 @@ export default function ContactPage() {
       role: "Certifikovaná EMS trenérka",
       specialization: "Ve vývoji",
       credo: "Ve vývoji",
-      image: "https://emsznojmo.cz/logo.svg"
+      image: "/Monika.jpg",
+      phone: "+420 777 535 302",
+      email: "info@pkznojmo.cz"
     },
     {
       id: 3,
@@ -26,7 +42,9 @@ export default function ContactPage() {
       role: "Certifikovaný EMS trenér",
       specialization: "Ve vývoji",
       credo: "Ve vývoji",
-      image: "https://emsznojmo.cz/logo.svg" 
+      image: "/Pavel.jpg",
+      phone: "+420 604 164 379",
+      email: "Dufek.Pavel@seznam.cz" 
     },
   ];
 
@@ -88,24 +106,29 @@ export default function ContactPage() {
                       <p className="text-xs font-bold text-[#2986BF]">{trainer.role}</p>
                     </div>
 
-                    <div className="text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-100 rounded-lg p-2 flex items-start gap-1">
-                      <Award size={14} className="text-[#73C2BE] shrink-0 mt-0.5" />
-                      <span>{trainer.specialization}</span>
+                    
+
+                    {/* Kontaktní údaje na trenéra */}
+                    <div className="pt-2 space-y-1 border-t border-slate-100 text-xs text-slate-600">
+                      <a 
+                        href={`tel:${trainer.phone.replace(/\s+/g, '')}`} 
+                        className="flex items-center gap-2 hover:text-[#2986BF] transition-colors"
+                      >
+                        <Phone size={13} className="text-[#2986BF]" />
+                        <span className="font-medium">{trainer.phone}</span>
+                      </a>
+                      <a 
+                        href={`mailto:${trainer.email}`} 
+                        className="flex items-center gap-2 hover:text-[#2986BF] transition-colors"
+                      >
+                        <Mail size={13} className="text-[#2986BF]" />
+                        <span className="font-medium">{trainer.email}</span>
+                      </a>
                     </div>
-
-                    <p className="text-xs text-slate-600 italic leading-relaxed pt-1">
-                      &ldquo;{trainer.credo}&ldquo;
-                    </p>
                   </div>
                 </div>
 
-                <div className="p-5 pt-0">
-                  <div className="w-full border-t border-slate-100 pt-3 text-center">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#1E388C] uppercase tracking-wider bg-[#1E388C]/5 px-2.5 py-1 rounded-full">
-                      <UserCheck size={12} className="text-[#73C2BE]" /> Provází lekcí
-                    </span>
-                  </div>
-                </div>
+                
               </div>
             ))}
           </div>
@@ -123,7 +146,7 @@ export default function ContactPage() {
               Studio v budově bazénu Louka
             </h2>
             <p className="text-slate-300 text-sm leading-relaxed">
-              Naše EMS tělocvična sídlí přímo v  budově plaveckého bazénu ve Znojmě. Nabízíme čisté, moderní prostředí s vynikající dostupností a možností spojit trénink s dalšími aktivitami.
+              Naše EMS tělocvična sídlí přímo v budově plaveckého bazénu ve Znojmě. Nabízíme čisté, moderní prostředí s vynikající dostupností a možností spojit trénink s dalšími aktivitami.
             </p>
             
             <ul className="space-y-3 text-xs text-slate-200">
@@ -145,7 +168,7 @@ export default function ContactPage() {
           {/* Fotka bazénu / budovy */}
           <div className="lg:col-span-7 relative rounded-2xl overflow-hidden shadow-2xl border border-slate-700 aspect-[16/10]">
             <img 
-              src="/Bazen.jpeg" /* Nahraď reálnou cestou k fotce bazénu */
+              src="/Bazen.jpeg" 
               alt="Městský plavecký stadion Znojmo - Louka" 
               className="w-full h-full object-cover"
             />
@@ -153,7 +176,7 @@ export default function ContactPage() {
             <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-xs bg-slate-900/80 backdrop-blur-md p-3 rounded-xl border border-white/10">
               <div className="flex items-center gap-2">
                 <Waves size={16} className="text-[#73C2BE]" />
-                <span className="font-medium text-slate-200"> Bazén Louka Znojmo</span>
+                <span className="font-medium text-slate-200">Bazén Louka Znojmo</span>
               </div>
               <span className="text-[10px] bg-[#1E388C] px-2 py-0.5 rounded text-white font-bold uppercase">Tělocvična v 1. patře</span>
             </div>
@@ -172,22 +195,37 @@ export default function ContactPage() {
               <span className="text-xs font-bold text-[#2986BF] uppercase tracking-widest block">Kde nás najdete</span>
               <h2 className="text-2xl sm:text-3xl font-black text-[#1E388C] uppercase tracking-tight">EMS Studio Znojmo</h2>
               <p className="text-xs text-slate-500 leading-relaxed max-w-sm">
-                Moderní, čisté a plně vybavené studio v širším centru Znojma. Parkování je možné v blízkosti studia.
+                Moderní, čisté a plně vybavené studio v širším centru Znojma. Parkování je možné přímo před budovou.
               </p>
             </div>
 
             <div className="grid gap-6 text-sm">
+              {/* Provozovna */}
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-[#1E388C] flex items-center justify-center shrink-0 shadow-sm">
                   <MapPin size={18} />
                 </div>
                 <div>
-                  <h4 className="font-bold text-[#1E388C] uppercase text-xs tracking-wider">Adresa Studia</h4>
-                  <p className="text-slate-700 font-medium mt-0.5">Melkusova 44, 671 81 Znojmo</p>
-                  <p className="text-slate-400 text-xs">(Tělocvična v budově bazénu Louka)</p>
+                  <h4 className="font-bold text-[#1E388C] uppercase text-xs tracking-wider">Provozovna (Adresa studia)</h4>
+                  <p className="text-slate-800 font-bold mt-0.5">Plavecký bazén Louka</p>
+                  <p className="text-slate-700 font-medium">Melkusova 3963/44</p>
+                  <p className="text-slate-700 font-medium">Znojmo</p>
                 </div>
               </div>
 
+              {/* Sídlo */}
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-[#1E388C] flex items-center justify-center shrink-0 shadow-sm">
+                  <Building2 size={18} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-[#1E388C] uppercase text-xs tracking-wider">Sídlo spolku</h4>
+                  <p className="text-slate-700 font-medium mt-0.5">Marušky Kudeříkové 622/8</p>
+                  <p className="text-slate-700 font-medium">669 02 Znojmo</p>
+                </div>
+              </div>
+
+              {/* Telefon */}
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-[#1E388C] flex items-center justify-center shrink-0 shadow-sm">
                   <Phone size={18} />
@@ -200,6 +238,7 @@ export default function ContactPage() {
                 </div>
               </div>
 
+              {/* E-mail */}
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 text-[#1E388C] flex items-center justify-center shrink-0 shadow-sm">
                   <Mail size={18} />
@@ -233,14 +272,11 @@ export default function ContactPage() {
             </p>
 
             <div className="space-y-2 text-sm text-slate-700">
-              <div className="flex justify-between py-1.5 border-b border-slate-100">
-                <span className="font-medium">Pondělí - Neděle</span>
-                <span className="font-bold text-[#1E388C]">06:00 - 19:00</span>
+              <div className="flex justify-between items-center py-2 border-b border-slate-100">
+                <span className="font-medium">Pondělí – Neděle</span>
+                <span className="font-bold text-[#1E388C]">6:00 – 19:00</span>
               </div>
-              <div className="flex justify-between py-1.5 text-slate-400">
-                <span>Svátky</span>
-                <span className="italic text-xs font-semibold uppercase tracking-wider bg-slate-50 px-2 py-0.5 rounded">Dle domluvy</span>
-              </div>
+              <p className="text-xs text-slate-400 text-right pt-0.5 italic">(dle rezervací)</p>
             </div>
 
             <div className="bg-[#73C2BE]/10 border border-[#73C2BE]/20 rounded-xl p-4 text-xs text-slate-700 flex gap-2">

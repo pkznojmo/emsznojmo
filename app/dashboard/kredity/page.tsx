@@ -1,32 +1,27 @@
-/*
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '../../../lib/supabase'; // upravte cestu dle projektu
+import { supabase } from '../../../lib/supabase';
 import Sidebar from '../../comp/Sidebar';
 import { 
   CreditCard, 
-  QrCode, 
   CheckCircle2, 
-  Copy, 
   Check, 
   ShieldCheck, 
   AlertCircle, 
   History,
-  ArrowRight,
-  Clock,
-  Coins
+  Coins,
+  Lock,
+  Sparkles,
+  Phone
 } from 'lucide-react';
-
-const BANK_ACCOUNT_NUMBER = "131-3604330207";
-const BANK_CODE = "0100";
-const IBAN = "CZ2801000001313604330207";
 
 interface CreditPackage {
   id: string;
   credits: number;
+  title: string;
   priceCZK: number;
   pricePerCredit: number;
   badge?: string;
@@ -34,17 +29,19 @@ interface CreditPackage {
   popular?: boolean;
 }
 
-// Ceník pro standardní klienty (Client)
+// Ceník pro standardní klienty (CLIENT)
 const CLIENT_PACKAGES: CreditPackage[] = [
   {
     id: 'single',
     credits: 1,
+    title: '1 lekce',
     priceCZK: 790,
     pricePerCredit: 790,
   },
   {
     id: 'pack-10',
     credits: 10,
+    title: '10 lekcí',
     priceCZK: 6990,
     pricePerCredit: 699,
     badge: 'Nejoblíbenější',
@@ -54,6 +51,7 @@ const CLIENT_PACKAGES: CreditPackage[] = [
   {
     id: 'pack-20',
     credits: 20,
+    title: '20 lekcí',
     priceCZK: 12800,
     pricePerCredit: 640,
     badge: 'Nejvýhodnější',
@@ -61,44 +59,49 @@ const CLIENT_PACKAGES: CreditPackage[] = [
   },
 ];
 
-// Zvýhodněný ceník pro Swimmer & Trainer (300 Kč / 1 kredit)
-const MEMBER_PACKAGES: CreditPackage[] = [
+// Zvýhodněný ceník pro VIP, TRAINER, ADMIN atd.
+const VIP_PACKAGES: CreditPackage[] = [
   {
     id: 'single',
     credits: 1,
-    priceCZK: 300,
-    pricePerCredit: 300,
-  },
-  {
-    id: 'pack-10',
-    credits: 10,
-    priceCZK: 3000,
-    pricePerCredit: 300,
-    badge: 'Členská cena',
-    popular: true,
-  },
-  {
-    id: 'pack-20',
-    credits: 20,
-    priceCZK: 6000,
-    pricePerCredit: 300,
-    badge: 'Členská cena',
+    title: '1 lekce',
+    priceCZK: 500,
+    pricePerCredit: 500,
+    badge: 'VIP cena',
   },
 ];
 
+// Sjednocený seznam rolí s nárokem na VIP ceník
+const VIP_ROLES = ['VIP', 'TRAINER', 'ADMIN', 'VIP_TRAINER', 'SWIMMER'];
+
+const isVipRole = (role?: string) => {
+  if (!role) return false;
+  return VIP_ROLES.includes(role.toUpperCase());
+};
+
 export default function KredityPage() {
   const router = useRouter();
-  const [profile, setProfile] = useState<{ id: string; birth_number: string | null; credit_balance: number; role?: string } | null>(null);
+  const [profile, setProfile] = useState<{ id: string; email?: string; full_name?: string; credit_balance: number; role?: string } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedPackage, setSelectedPackage] = useState<CreditPackage>(CLIENT_PACKAGES[1]);
-  const [creatingOrder, setCreatingOrder] = useState(false);
-  const [activeOrder, setActiveOrder] = useState<any>(null);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Určení balíčků podle role
-  const isMember = profile?.role === 'SWIMMER' || profile?.role === 'TRAINER';
-  const currentPackages = isMember ? MEMBER_PACKAGES : CLIENT_PACKAGES;
+  // Určení balíčků podle role načteného profilu
+  const isVip = isVipRole(profile?.role);
+  const currentPackages = isVip ? VIP_PACKAGES : CLIENT_PACKAGES;
+
+  // Výchozí balíček (inicializuje se prvním platným balíčkem)
+  const [selectedPackage, setSelectedPackage] = useState<CreditPackage>(CLIENT_PACKAGES[1]);
+
+  // Při načtení/změně profilu se automaticky vybere odpovídající balíček ze zobrazené sady
+  useEffect(() => {
+    if (profile) {
+      const packages = isVipRole(profile.role) ? VIP_PACKAGES : CLIENT_PACKAGES;
+      // Bezpečný výběr balíčku (pokud VIP obsahuje méně položek)
+      setSelectedPackage(packages[1] || packages[0]);
+    }
+  }, [profile?.role]);
 
   const loadUserData = async () => {
     try {
@@ -109,22 +112,29 @@ export default function KredityPage() {
         return;
       }
 
-      // 1. Načtení profilu VČETNĚ ROLI (role)
-      const { data: profileData } = await supabase
+      // Načtení profilu s použitím first_name a last_name
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
-        .select('id, birth_number, credit_balance, role')
+        .select('id, first_name, last_name, credit_balance, role')
         .eq('id', user.id)
         .single();
 
-      if (profileData) {
-        setProfile(profileData);
-        
-        // Nastavení výchozího balíčku podle role
-        const isUserMember = profileData.role === 'Swimmer' || profileData.role === 'Trainer';
-        setSelectedPackage(isUserMember ? MEMBER_PACKAGES[1] : CLIENT_PACKAGES[1]);
+      if (profileError) {
+        console.error('Chyba při načítání profilu:', profileError);
       }
 
-      // 2. Načtení historie transakcí
+      if (profileData) {
+        const fullName = `${profileData.first_name || ''} ${profileData.last_name || ''}`.trim();
+        setProfile({
+          id: profileData.id,
+          full_name: fullName || user.email,
+          credit_balance: profileData.credit_balance,
+          role: profileData.role,
+          email: user.email,
+        });
+      }
+
+      // Načtení historie kreditních transakcí
       const { data: txData } = await supabase
         .from('credit_transactions')
         .select('*')
@@ -152,45 +162,45 @@ export default function KredityPage() {
     router.refresh();
   };
 
-  const handleCreatePayment = async () => {
-    if (!profile || !profile.birth_number) return;
+  // Zahájení platby přes GoPay
+  const handleGoPayPayment = async () => {
+    if (!profile || !selectedPackage) return;
 
-    setCreatingOrder(true);
+    setProcessingPayment(true);
+    setErrorMessage(null);
+
     try {
-      const { data: order, error } = await supabase
-        .from('payment_orders')
-        .insert({
-          user_id: profile.id,
-          variable_symbol: profile.birth_number,
-          amount_czk: selectedPackage.priceCZK,
-          credits_to_add: selectedPackage.credits,
-          status: 'pending',
-        })
-        .select()
-        .single();
+      const response = await fetch('/api/payments/gopay', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: profile.id,
+          userEmail: profile.email,
+          packageId: selectedPackage.id,
+          credits: selectedPackage.credits,
+          amountCZK: selectedPackage.priceCZK,
+          packageName: selectedPackage.title,
+        }),
+      });
 
-      if (error) throw error;
-      setActiveOrder(order);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Nepodařilo se vytvořit platební požadavek.');
+      }
+
+      if (data.gw_url) {
+        window.location.href = data.gw_url;
+      } else {
+        throw new Error('Nebyla doručena URL platební brány.');
+      }
     } catch (err: any) {
-      alert('Nepodařilo se vygenerovat platební příkaz: ' + err.message);
-    } finally {
-      setCreatingOrder(false);
+      console.error('Chyba při platbě GoPay:', err);
+      setErrorMessage(err.message || 'Při zakládání platby došlo k chybě. Zkuste to prosím znovu.');
+      setProcessingPayment(false);
     }
-  };
-
-  const copyToClipboard = (text: string, fieldName: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(fieldName);
-    setTimeout(() => setCopiedField(null), 2000);
-  };
-
-  const getSPDString = (amount: number, vs: string, credits: number) => {
-    let label = 'vstupů';
-    if (credits === 1) label = 'vstup';
-    else if (credits >= 2 && credits <= 4) label = 'vstupy';
-
-    const msg = `${credits} ${label} na cvičení`;
-    return `SPD*1.0*ACC:${IBAN}*AM:${amount}.00*CC:CZK*X-VS:${vs}*MSG:${msg}`;
   };
 
   if (loading) {
@@ -208,18 +218,23 @@ export default function KredityPage() {
 
       <main className="flex-1 p-4 md:p-8 lg:p-10 max-w-5xl mx-auto overflow-y-auto w-full space-y-8 pb-24 md:pb-12">
         
-        }
+        {/* Hlavička & Stav kreditů */}
         <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
           <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
           
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
             <div>
               <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm mb-2">
-                <Coins className="w-4 h-4" /> Klientská zóna {isMember && <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2 py-0.5 rounded-full border border-emerald-500/30">Zvýhodněné členství ({profile?.role})</span>}
+                <Coins className="w-4 h-4" /> Dobíjení kreditů 
+                {isVip && (
+                  <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/30 font-bold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> Zvýhodněné ceníky ({profile?.role})
+                  </span>
+                )}
               </div>
-              <h1 className="text-2xl sm:text-3xl font-bold">Nákup kreditů</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold">Nákup kreditních balíčků</h1>
               <p className="text-slate-400 text-sm mt-1">
-                Kredity slouží k rezervaci tréninků. Dobijte si účet bezpečně převodem.
+                Kredity slouží k okamžité rezervaci lekcí a tréninků. Platba probíhá online přes platební bránu GoPay.
               </p>
             </div>
 
@@ -235,42 +250,52 @@ export default function KredityPage() {
           </div>
         </div>
 
-        }
-        {!profile?.birth_number && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-4 text-amber-900">
-            <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
-            <div className="space-y-2">
-              <h3 className="font-bold">Pro nákup kreditů chybí rodné číslo</h3>
-              <p className="text-sm text-amber-800">
-                Rodné číslo slouží jako váš unikátní variabilní symbol pro automatické párování plateb.
-              </p>
-              <Link 
-                href="/dashboard" 
-                className="inline-flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs px-4 py-2 rounded-xl transition shadow-sm"
-              >
-                Doplnit rodné číslo <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+        {/* Upozornění na brzké spuštění platební brány */}
+        <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-amber-900 shadow-sm">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 text-amber-600 mt-0.5">
+              <Phone className="w-5 h-5" />
             </div>
+            <div>
+              <h3 className="font-bold text-base text-amber-950">Online platební brána bude brzy zprovozněna</h3>
+              <p className="text-sm text-amber-800/90 mt-0.5 leading-relaxed">
+                Na spuštění automatických online plateb pracujeme. Kredity a balíčky lekcí si zatím můžete pohodlně objednat telefonicky na naší lince.
+              </p>
+            </div>
+          </div>
+          <a
+            href="tel:+420777535302"
+            className="inline-flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold px-5 py-3 rounded-xl transition shadow-md shadow-amber-600/15 shrink-0 w-full sm:w-auto text-sm"
+          >
+            <Phone className="w-4 h-4" /> Objednat telefonicky
+          </a>
+        </div>
+
+        {/* Chybová hláška */}
+        {errorMessage && (
+          <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center gap-3 text-rose-900 text-sm">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span>{errorMessage}</span>
           </div>
         )}
 
-        }
+        {/* 1. Výběr balíčku */}
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            1. Vyberte si balíček kreditů
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              1. Vyberte si balíček lekcí
+            </h2>
+            <span className="text-xs text-slate-500 font-medium">1 kredit = 1 lekce</span>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {currentPackages.map((pkg) => {
-              const isSelected = selectedPackage.id === pkg.id;
+              const isSelected = selectedPackage?.id === pkg.id;
 
               return (
                 <div
                   key={pkg.id}
-                  onClick={() => {
-                    setSelectedPackage(pkg);
-                    setActiveOrder(null);
-                  }}
+                  onClick={() => setSelectedPackage(pkg)}
                   className={`relative rounded-3xl p-6 cursor-pointer transition-all duration-200 border-2 flex flex-col justify-between ${
                     isSelected
                       ? 'bg-white border-emerald-500 shadow-xl shadow-emerald-500/10 scale-[1.02]'
@@ -288,8 +313,8 @@ export default function KredityPage() {
                   <div>
                     <div className="flex justify-between items-start mb-4">
                       <div>
-                        <span className="text-4xl font-extrabold text-slate-900">{pkg.credits}</span>
-                        <span className="text-slate-500 font-semibold ml-1.5">{pkg.credits === 1 ? 'kredit' : 'kreditů'}</span>
+                        <span className="text-3xl font-black text-slate-900">{pkg.title}</span>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">({pkg.credits} {pkg.credits === 1 ? 'kredit' : 'kreditů'})</p>
                       </div>
                       <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
                         isSelected ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300'
@@ -299,11 +324,11 @@ export default function KredityPage() {
                     </div>
 
                     <div className="space-y-1 mb-6">
-                      <div className="text-2xl font-black text-slate-900">
+                      <div className="text-3xl font-black text-slate-900">
                         {pkg.priceCZK.toLocaleString('cs-CZ')} Kč
                       </div>
                       <p className="text-xs text-slate-500 font-medium">
-                        ({pkg.pricePerCredit} Kč / kredit)
+                        ({pkg.pricePerCredit.toLocaleString('cs-CZ')} Kč / lekce)
                       </p>
                       {pkg.savings && (
                         <span className="inline-block mt-2 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md">
@@ -315,10 +340,10 @@ export default function KredityPage() {
 
                   <div className="pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-2">
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> Platnost kreditů bez omezení
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> Neomezená platnost kreditů
                     </div>
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> Automatické připsání do pár minut
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> Okamžité připsání po zaplacení
                     </div>
                   </div>
                 </div>
@@ -327,112 +352,79 @@ export default function KredityPage() {
           </div>
         </div>
 
-        }
-        {profile?.birth_number && (
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              2. Zaplaťte QR kódem nebo bankovním převodem
-            </h2>
-
-            {!activeOrder ? (
-              <div className="text-center py-6 bg-slate-50 rounded-2xl border border-dashed border-slate-300 p-6">
-                <p className="text-slate-600 mb-4 font-medium">
-                  Vybráno: <span className="font-bold text-slate-900">{selectedPackage.credits} kreditů</span> za <span className="font-bold text-slate-900">{selectedPackage.priceCZK.toLocaleString('cs-CZ')} Kč</span>
-                </p>
-                <button
-                  onClick={handleCreatePayment}
-                  disabled={creatingOrder}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-8 py-4 rounded-xl transition shadow-lg shadow-emerald-600/20 active:scale-95 disabled:opacity-50 inline-flex items-center gap-2"
-                >
-                  {creatingOrder ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Generuji QR kód...
-                    </>
-                  ) : (
-                    <>
-                      <QrCode className="w-5 h-5" /> Generovat QR kód pro platbu
-                    </>
-                  )}
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center bg-slate-50 p-6 sm:p-8 rounded-2xl border border-slate-200">
-                <div className="lg:col-span-5 flex flex-col items-center justify-center p-4 bg-white rounded-2xl border border-slate-200 shadow-sm text-center space-y-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Naskenujte v mobilním bankovnictví</span>
-                  
-                  <div className="p-3 bg-white rounded-xl border border-slate-100 shadow-inner">
-                    <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
-                        getSPDString(
-                          activeOrder.amount_czk, 
-                          activeOrder.variable_symbol, 
-                          activeOrder.credits_to_add || selectedPackage.credits
-                        )
-                      )}`}
-                      alt="Platební QR Kód"
-                      className="w-52 h-52 object-contain"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
-                    <ShieldCheck className="w-4 h-4" /> Standardní česká QR platba
-                  </div>
-                </div>
-
-                <div className="lg:col-span-7 space-y-4">
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3 text-emerald-900 text-sm">
-                    <Clock className="w-5 h-5 text-emerald-600 shrink-0" />
-                    <span>Platbu zpracováváme automaticky. Kredity se vám připíšou do 15 minut po doručení platby do banky.</span>
-                  </div>
-
-                  <div className="space-y-3 font-mono text-sm">
-                    <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200">
-                      <div>
-                        <span className="text-xs text-slate-400 font-sans block">Číslo účtu</span>
-                        <span className="font-bold text-slate-900">{BANK_ACCOUNT_NUMBER} / {BANK_CODE}</span>
-                      </div>
-                      <button
-                        onClick={() => copyToClipboard(`${BANK_ACCOUNT_NUMBER}/${BANK_CODE}`, 'account')}
-                        className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-                      >
-                        {copiedField === 'account' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-emerald-300 ring-2 ring-emerald-500/10">
-                      <div>
-                        <span className="text-xs text-emerald-600 font-sans font-bold block">Variabilní symbol (DŮLEŽITÉ)</span>
-                        <span className="font-black text-slate-900 text-base">{activeOrder.variable_symbol}</span>
-                      </div>
-                      <button
-                        onClick={() => copyToClipboard(activeOrder.variable_symbol, 'vs')}
-                        className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-                      >
-                        {copiedField === 'vs' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200">
-                      <div>
-                        <span className="text-xs text-slate-400 font-sans block">Částka k úhradě</span>
-                        <span className="font-bold text-slate-900">{activeOrder.amount_czk.toLocaleString('cs-CZ')} Kč</span>
-                      </div>
-                      <button
-                        onClick={() => copyToClipboard(activeOrder.amount_czk.toString(), 'amount')}
-                        className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
-                      >
-                        {copiedField === 'amount' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+        {/* 2. Platba přes GoPay */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                2. Zaplatit online přes bránu GoPay
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Rychlá a bezpečná platba kartou, Apple Pay, Google Pay nebo online bankovním převodem.
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl self-start sm:self-auto">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span className="text-xs font-bold text-slate-700">Zabezpečeno GoPay</span>
+            </div>
           </div>
-        )}
 
-        
+          <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="space-y-1 text-center sm:text-left">
+              <span className="text-xs text-slate-500 font-medium uppercase tracking-wider block">Shrnutí objednávky</span>
+              <div className="text-lg font-bold text-slate-900">
+                {selectedPackage?.title} ({selectedPackage?.credits} kreditů)
+              </div>
+              <div className="text-2xl font-black text-emerald-600">
+                {selectedPackage?.priceCZK.toLocaleString('cs-CZ')} Kč
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+              
+
+              <button
+                
+                disabled={processingPayment || !selectedPackage}
+                className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold px-8 py-4 rounded-xl transition shadow-lg shadow-emerald-600/20 disabled:opacity-50 inline-flex items-center justify-center gap-3 w-full sm:w-auto text-base"
+              >
+                {processingPayment ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Přesměrovávám na GoPay...
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-5 h-5" /> Zaplatit {selectedPackage?.priceCZK.toLocaleString('cs-CZ')} Kč
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-3 text-center sm:text-left">
+              Podporované způsoby platby
+            </span>
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
+              <div className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-600 border border-slate-200">
+                💳 Platba kartou (Visa / Mastercard)
+              </div>
+              <div className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-600 border border-slate-200">
+                🍏 Apple Pay
+              </div>
+              <div className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-600 border border-slate-200">
+                G Pay (Google Pay)
+              </div>
+              <div className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-600 border border-slate-200">
+                🏦 Rychlý bankovní převod
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Historie kreditů */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-4">
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <History className="w-5 h-5 text-slate-500" /> Historie pohybů kreditů
@@ -445,7 +437,7 @@ export default function KredityPage() {
               {transactions.map((tx) => (
                 <div key={tx.id} className="py-3 flex items-center justify-between text-sm">
                   <div>
-                    <p className="font-medium text-slate-900">{tx.description || 'Pohyb kreditů'}</p>
+                    <p className="font-medium text-slate-900">{tx.description || 'Nákup kreditů'}</p>
                     <p className="text-xs text-slate-400">
                       {new Date(tx.created_at).toLocaleDateString('cs-CZ', {
                         day: 'numeric',
@@ -467,70 +459,12 @@ export default function KredityPage() {
           )}
         </div>
 
-      </main>
-    </div>
-  );
-}
-*/
-'use client';
-
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Sidebar from '../../comp/Sidebar';
-import { supabase } from '../../../lib/supabase';
-import { Construction } from 'lucide-react';
-
-export default function KredityPage() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-
-  const loadUserData = async () => {
-    try {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error || !user) {
-        router.push('/prihlaseni');
-        return;
-      }
-    } catch (err) {
-      console.error('Chyba při ověřování uživatele:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadUserData();
-  }, [router]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push('/prihlaseni');
-    router.refresh();
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-gray-500 font-medium text-sm">
-        <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
-        Načítám...
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50/60 flex flex-col md:flex-row text-gray-900">
-      <Sidebar onLogout={handleLogout} />
-
-      <main className="flex-1 p-4 md:p-8 lg:p-10 max-w-5xl mx-auto flex items-center justify-center w-full">
-        <div className="bg-white border border-slate-200 rounded-3xl p-8 sm:p-12 shadow-sm text-center max-w-lg w-full space-y-4">
-          <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
-            <Construction className="w-8 h-8" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900">Stránka je ve vývoji</h1>
-          <p className="text-slate-500 text-sm">
-            Tato sekce se pro vás připravuje. Brzy zde bude dostupná správa a nákup kreditů.
-          </p>
+        {/* Pata */}
+        <div className="text-center text-xs text-slate-400 space-y-1 pt-4 border-t border-slate-200">
+          <p>Online platby zajišťuje platební brána **GoPay** (GOPAY s.r.o.). Pro rychlé dobití lze rovněž využít telefonickou objednávku.</p>
+          <p>Platby probíhají v souladu s <Link href="/obchodni-podminky" className="underline hover:text-slate-600">Obchodními podmínkami</Link> a podléhají ochraně osobních údajů.</p>
         </div>
+
       </main>
     </div>
   );

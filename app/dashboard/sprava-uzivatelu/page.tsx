@@ -4,10 +4,11 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Search, ShieldAlert, Plus, QrCode, CalendarPlus, 
-  User, CheckCircle2, X, CreditCard, Clock, UserCheck
+  User, CheckCircle2, X, CreditCard, Clock, UserCheck,
+  AlertCircle
 } from 'lucide-react';
-import Sidebar from '../../comp/Sidebar'; // Upravte cestu k vašemu sidebaru
-import { supabase } from '../../../lib/supabase'; // Upravte cestu k Supabase klientovi
+import Sidebar from '../../comp/Sidebar'; 
+import { supabase } from '../../../lib/supabase';
 
 interface UserProfile {
   id: string;
@@ -28,21 +29,49 @@ interface Trainer {
 
 type ModalType = 'CREDIT' | 'QR' | 'RESERVATION' | null;
 
+interface NotificationState {
+  type: 'success' | 'error';
+  title: string;
+  message: string;
+}
+
+// Generování časových slotů po 30 min (06:00 až 21:00)
+const GENERATE_TIME_SLOTS = () => {
+  const slots: string[] = [];
+  let startMinutes = 6 * 60; // 06:00
+  const endMinutes = 20 * 60 + 30; // 20:30 (poslední blok do 21:00)
+
+  while (startMinutes <= endMinutes) {
+    const startH = Math.floor(startMinutes / 60).toString().padStart(2, '0');
+    const startM = (startMinutes % 60).toString().padStart(2, '0');
+    
+    const endTotal = startMinutes + 30;
+    const endH = Math.floor(endTotal / 60).toString().padStart(2, '0');
+    const endM = (endTotal % 60).toString().padStart(2, '0');
+
+    slots.push(`${startH}:${startM}-${endH}:${endM}`);
+    startMinutes += 30;
+  }
+  return slots;
+};
+
+const TIME_SLOTS = GENERATE_TIME_SLOTS();
+
 export default function AdminUsersPage() {
   const router = useRouter();
   
-  // Stavy stránky
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Stavy modálů
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Formulářové stavy
+  // Custom notification popup state
+  const [notification, setNotification] = useState<NotificationState | null>(null);
+
   const [creditAmount, setCreditAmount] = useState<number | ''>('');
   const [creditNote, setCreditNote] = useState('Ruční dobití administrátorem');
   
@@ -51,17 +80,14 @@ export default function AdminUsersPage() {
   const [resTrainerId, setResTrainerId] = useState('');
   const [deductCredit, setDeductCredit] = useState(true);
 
-  // 1. Ochrana routy a načtení dat
   useEffect(() => {
     const initPage = async () => {
-      // Autentizace
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
         router.push('/prihlaseni');
         return;
       }
 
-      // Kontrola role ADMIN
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
@@ -69,12 +95,15 @@ export default function AdminUsersPage() {
         .single();
 
       if (!profile || profile.role !== 'ADMIN') {
-        alert('Nemáte oprávnění pro přístup na tuto stránku.');
-        router.push('/dashboard');
+        setNotification({
+          type: 'error',
+          title: 'Přístup odepřen',
+          message: 'Nemáte oprávnění pro přístup na tuto stránku.'
+        });
+        setTimeout(() => router.push('/dashboard'), 2000);
         return;
       }
 
-      // Načtení uživatelů
       const { data: usersData } = await supabase
         .from('profiles')
         .select('*')
@@ -82,7 +111,6 @@ export default function AdminUsersPage() {
 
       if (usersData) setUsers(usersData);
 
-      // Načtení trenérů a adminů pro rezervační modál (Role TRAINER nebo ADMIN)
       const { data: trainersData } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, role')
@@ -96,7 +124,6 @@ export default function AdminUsersPage() {
     initPage();
   }, [router]);
 
-  // Vyhledávání a filtrování
   const filteredUsers = useMemo(() => {
     return users.filter(u => {
       const fullName = `${u.first_name || ''} ${u.last_name || ''}`.toLowerCase();
@@ -106,7 +133,6 @@ export default function AdminUsersPage() {
     });
   }, [users, searchQuery]);
 
-  // Akce: Změna role uživatele
   const handleRoleChange = async (userId: string, newRole: string) => {
     try {
       const { error } = await supabase
@@ -116,10 +142,8 @@ export default function AdminUsersPage() {
 
       if (error) throw error;
 
-      // Aktualizace lokálního stavu uživatelů
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
       
-      // Pokud se měnili trenéři/admini, aktualizujeme i seznam trenérů pro rezervace
       const { data: trainersData } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, role')
@@ -127,17 +151,23 @@ export default function AdminUsersPage() {
 
       if (trainersData) setTrainers(trainersData);
 
-      alert('Role byla úspěšně změněna.');
+      setNotification({
+        type: 'success',
+        title: 'Role úspěšně změněna',
+        message: `Uživatelská role byla upravena na ${newRole}.`
+      });
     } catch (err: any) {
-      alert('Chyba při změně role: ' + err.message);
+      setNotification({
+        type: 'error',
+        title: 'Chyba při změně role',
+        message: err.message || 'Nepodařilo se změnit roli uživatele.'
+      });
     }
   };
 
-  // Akce: Otevření modálu
   const openModal = (type: ModalType, user: UserProfile) => {
     setSelectedUser(user);
     setActiveModal(type);
-    // Reset formulářů
     setCreditAmount('');
     setCreditNote('Ruční dobití administrátorem');
     setResDate('');
@@ -151,17 +181,15 @@ export default function AdminUsersPage() {
     setSelectedUser(null);
   };
 
-  // Akce: Přidání kreditů
   const handleAddCredit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser || !creditAmount) return;
+    if (!selectedUser || creditAmount === '') return;
 
     setIsSubmitting(true);
     try {
       const amount = Number(creditAmount);
       const newBalance = (selectedUser.credit_balance || 0) + amount;
 
-      // 1. Update profilu
       const { error: profileErr } = await supabase
         .from('profiles')
         .update({ credit_balance: newBalance })
@@ -169,29 +197,40 @@ export default function AdminUsersPage() {
       
       if (profileErr) throw profileErr;
 
-      // 2. Zápis do transakcí
       const { error: txErr } = await supabase
         .from('credit_transactions')
         .insert({
           user_id: selectedUser.id,
           amount: amount,
           description: creditNote,
+          type: amount >= 0 ? 'TOPUP' : 'ADMIN_ADJUSTMENT'
         });
 
       if (txErr) throw txErr;
 
-      // Aktualizace UI
       setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, credit_balance: newBalance } : u));
-      alert(`Úspěšně bylo přidáno ${amount} kreditů.`);
+      
+      const isDeduction = amount < 0;
       closeModal();
+
+      setNotification({
+        type: 'success',
+        title: isDeduction ? 'Kredity byly odebrány' : 'Kredity úspěšně připsány',
+        message: isDeduction 
+          ? `Klientovi ${selectedUser.first_name} ${selectedUser.last_name} bylo strženo ${Math.abs(amount)} kreditů.`
+          : `Klientovi ${selectedUser.first_name} ${selectedUser.last_name} bylo úspěšně přidáno ${amount} kreditů.`
+      });
     } catch (err: any) {
-      alert('Chyba při přidávání kreditů: ' + err.message);
+      setNotification({
+        type: 'error',
+        title: 'Chyba při úpravě kreditů',
+        message: err.message || 'Při úpravě stavu kreditů došlo k chybě.'
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Akce: Vytvoření rezervace
   const handleCreateReservation = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser || !resDate || !resTime) return;
@@ -200,7 +239,6 @@ export default function AdminUsersPage() {
     try {
       let currentCredits = selectedUser.credit_balance || 0;
 
-      // Odečtení kreditu, pokud je zaškrtnuto
       if (deductCredit) {
         if (currentCredits < 1) {
           throw new Error('Uživatel nemá dostatek kreditů pro vytvoření rezervace.');
@@ -216,16 +254,15 @@ export default function AdminUsersPage() {
           user_id: selectedUser.id,
           amount: -1,
           description: `Vytvoření rezervace administrátorem (${resDate} v ${resTime})`,
+          type: 'RESERVATION'
         });
       }
 
-      // Nalezení jména trenéra/admina
       const selectedTrainer = trainers.find(t => t.id === resTrainerId);
       const trainerName = selectedTrainer 
         ? `${selectedTrainer.first_name || ''} ${selectedTrainer.last_name || ''}`.trim() 
         : 'Trenér EMS';
 
-      // Vytvoření rezervace
       const { error: resErr } = await supabase
         .from('reservations')
         .insert({
@@ -239,15 +276,23 @@ export default function AdminUsersPage() {
 
       if (resErr) throw resErr;
 
-      // Aktualizace lokálních kreditů v tabulce, pokud se strhávaly
       if (deductCredit) {
         setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, credit_balance: currentCredits } : u));
       }
 
-      alert('Rezervace úspěšně vytvořena.');
       closeModal();
+
+      setNotification({
+        type: 'success',
+        title: 'Rezervace úspěšně vytvořena',
+        message: `Rezervace pro klienta ${selectedUser.first_name} ${selectedUser.last_name} na termín ${resDate} (${resTime}) byla potvrena.`
+      });
     } catch (err: any) {
-      alert('Chyba při vytváření rezervace: ' + err.message);
+      setNotification({
+        type: 'error',
+        title: 'Chyba při vytváření rezervace',
+        message: err.message || 'Při vytváření rezervace došlo k neznámé chybě.'
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -262,11 +307,10 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row text-gray-900">
+    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row text-gray-900 relative">
       <Sidebar onLogout={() => supabase.auth.signOut().then(() => router.push('/prihlaseni'))} />
 
       <main className="flex-1 p-6 md:p-10 max-w-7xl mx-auto w-full overflow-hidden">
-        {/* HEADER */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div>
             <div className="flex items-center gap-3 mb-2">
@@ -291,7 +335,6 @@ export default function AdminUsersPage() {
           </div>
         </header>
 
-        {/* TABULKA UŽIVATELŮ */}
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
@@ -356,7 +399,7 @@ export default function AdminUsersPage() {
                           <button 
                             onClick={() => openModal('CREDIT', user)}
                             className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors group relative"
-                            title="Přidat kredity"
+                            title="Přidat/Odebrat kredity"
                           >
                             <Plus size={18} />
                           </button>
@@ -385,24 +428,22 @@ export default function AdminUsersPage() {
         </div>
       </main>
 
-      {/* --- MODALS --- */}
+      {/* MODÁLNÍ OKNA - AKCE */}
       {activeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-gray-100">
             
-            {/* Heder Modálu */}
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <h3 className="text-xl font-bold text-gray-900">
                 {activeModal === 'CREDIT' && 'Správa kreditů'}
                 {activeModal === 'RESERVATION' && 'Nová rezervace'}
                 {activeModal === 'QR' && 'Klientský QR Kód'}
               </h3>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100">
+              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition-colors">
                 <X size={20} />
               </button>
             </div>
 
-            {/* Obsah - Přidání kreditů */}
             {activeModal === 'CREDIT' && (
               <form onSubmit={handleAddCredit} className="p-6 space-y-5">
                 <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl">
@@ -439,14 +480,13 @@ export default function AdminUsersPage() {
                 <button 
                   disabled={isSubmitting}
                   type="submit"
-                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all disabled:opacity-50"
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-emerald-600/20 active:scale-[0.99]"
                 >
                   {isSubmitting ? 'Ukládám...' : 'Potvrdit transakci'}
                 </button>
               </form>
             )}
 
-            {/* Obsah - Vytvoření rezervace */}
             {activeModal === 'RESERVATION' && (
               <form onSubmit={handleCreateReservation} className="p-6 space-y-5">
                  <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl mb-2">
@@ -469,14 +509,20 @@ export default function AdminUsersPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Čas (HH:MM)</label>
-                    <input
-                      type="time"
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Časový blok</label>
+                    <select
                       required
                       value={resTime}
                       onChange={(e) => setResTime(e.target.value)}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none focus:border-emerald-500"
-                    />
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none focus:border-emerald-500 bg-white"
+                    >
+                      <option value="">Vyberte čas</option>
+                      {TIME_SLOTS.map((slot) => (
+                        <option key={slot} value={slot}>
+                          {slot}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -496,7 +542,7 @@ export default function AdminUsersPage() {
                   </select>
                 </div>
 
-                <label className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50">
+                <label className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors">
                   <input
                     type="checkbox"
                     checked={deductCredit}
@@ -511,14 +557,13 @@ export default function AdminUsersPage() {
                 <button 
                   disabled={isSubmitting}
                   type="submit"
-                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all disabled:opacity-50"
+                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all disabled:opacity-50 shadow-lg shadow-blue-600/20 active:scale-[0.99]"
                 >
                   {isSubmitting ? 'Vytvářím...' : 'Vytvořit rezervaci'}
                 </button>
               </form>
             )}
 
-            {/* Obsah - Zobrazení QR Kódu */}
             {activeModal === 'QR' && selectedUser && (
               <div className="p-8 flex flex-col items-center justify-center text-center space-y-4">
                 <div className="p-4 bg-white border-2 border-gray-100 rounded-2xl shadow-sm">
@@ -544,6 +589,44 @@ export default function AdminUsersPage() {
               </div>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM POPUP NOTIFIKACE (NÁHRADA ZA BROWSER ALERT) */}
+      {notification && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center animate-in zoom-in-95 duration-200 border border-gray-100">
+            <div className={`w-16 h-16 rounded-2xl mx-auto flex items-center justify-center mb-4 ${
+              notification.type === 'success' 
+                ? 'bg-emerald-100 text-emerald-600' 
+                : 'bg-rose-100 text-rose-600'
+            }`}>
+              {notification.type === 'success' ? (
+                <CheckCircle2 size={36} />
+              ) : (
+                <ShieldAlert size={36} />
+              )}
+            </div>
+            
+            <h3 className="text-xl font-extrabold text-gray-900 mb-2">
+              {notification.title}
+            </h3>
+            
+            <p className="text-gray-500 text-sm mb-6 leading-relaxed">
+              {notification.message}
+            </p>
+            
+            <button
+              onClick={() => setNotification(null)}
+              className={`w-full py-3.5 text-white font-bold rounded-xl transition-all shadow-md active:scale-[0.98] ${
+                notification.type === 'success'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+                  : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
+              }`}
+            >
+              Rozumím
+            </button>
           </div>
         </div>
       )}
