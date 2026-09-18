@@ -179,7 +179,7 @@ export default function HomePage() {
             {/* Zvýhodněná permanentka */}
             <div className="rounded-2xl border-2 border-[#1E388C] p-8 shadow-md space-y-6 bg-white relative flex flex-col justify-between hover:shadow-xl transition-all group">
               <span className="absolute -top-3 left-6 rounded-md bg-[#1E388C] text-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest shadow-sm">
-                Nejvýhodnější volba
+                Nejoblíbenější volba
               </span>
               <div className="space-y-4">
                 <span className="text-xs font-bold text-[#73C2BE] bg-[#73C2BE]/10 px-2 py-0.5 rounded-md uppercase tracking-wider inline-block">Aktivní proměna postavy</span>
@@ -190,7 +190,7 @@ export default function HomePage() {
                   <span className="text-xs text-slate-400 font-medium ml-2">(690 Kč / lekce)</span>
                 </div>
                 <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                  Kompletní individuální péče trenéra na každé lekci, zapůjčení veškerého čistého vybavení je započteno v ceně. Platnost permanentky je celých 6 měsíců.
+                  Kompletní individuální péče trenéra na každé lekci, zapůjčení veškerého čistého vybavení je započteno v ceně. Platnost permanentky jsou celé 4 měsíce.
                 </p>
               </div>
             </div>

@@ -94,10 +94,6 @@ export default function PricelistPage() {
                   <Check size={16} className="text-[#2295d3] shrink-0 mt-0.5" />
                   <span>Garantovaná platnost permanentky 4 měsíce</span>
                 </li>
-                <li className="flex items-start gap-2.5">
-                  <Check size={16} className="text-[#2295d3] shrink-0 mt-0.5" />
-                  <span>Možnost převodu zbývajících vstupů na jinou osobu</span>
-                </li>
               </ul>
             </div>
 
@@ -141,10 +137,6 @@ export default function PricelistPage() {
                 <li className="flex items-start gap-2.5">
                   <Check size={16} className="text-[#1E388C] shrink-0 mt-0.5" />
                   <span>Garantovaná platnost permanentky 6 měsíců</span>
-                </li>
-                <li className="flex items-start gap-2.5">
-                  <Check size={16} className="text-[#1E388C] shrink-0 mt-0.5" />
-                  <span>Možnost převodu zbývajících vstupů na jinou osobu</span>
                 </li>
               </ul>
             </div>
