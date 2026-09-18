@@ -340,9 +340,6 @@ export default function KredityPage() {
 
                   <div className="pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-2">
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> Neomezená platnost kreditů
-                    </div>
-                    <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> Okamžité připsání po zaplacení
                     </div>
                   </div>

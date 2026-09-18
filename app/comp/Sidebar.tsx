@@ -42,6 +42,7 @@ const TRAINER_LINKS: NavLinkItem[] = [
   { href: "/dashboard/pravidelny-rozvrh", label: "Pravidelný Rozvrh", icon: Clock },
   { href: "/dashboard/tydenni-rozvrh", label: "Výjimky - Rozvrh", icon: CalendarDays },
   { href: "/dashboard/klienti", label: "Klienti", icon: Users },
+  { href: "/dashboard/telocvicna", label: "Obsazení Tělocvičny", icon: Users },
 ];
 
 const ADMIN_LINKS: NavLinkItem[] = [
