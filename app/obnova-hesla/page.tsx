@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '../../lib/supabase';
+import { createBrowserClient } from '@supabase/ssr';
 
 export default function ObnovaHeslaPage() {
   const router = useRouter();
@@ -11,6 +11,12 @@ export default function ObnovaHeslaPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Klientská instance z @supabase/ssr automaticky čte cookies nastavené v /auth/callback
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +37,14 @@ export default function ObnovaHeslaPage() {
     setLoading(true);
 
     try {
-      // 2. Aktualizace hesla přihlášeného uživatele (díky auth/callback session)
+      // 2. Kontrola, zda máme z cookies platnou session
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        throw new Error('Relace nebyla nalezena. Požádejte o nový e-mail pro obnovu hesla.');
+      }
+
+      // 3. Aktualizace hesla přihlášeného uživatele
       const { error: updateError } = await supabase.auth.updateUser({
         password: password,
       });
@@ -42,7 +55,7 @@ export default function ObnovaHeslaPage() {
 
       setSuccess('Heslo bylo úspěšně změněno! Přesměrovávám na přihlášení...');
 
-      // 3. Po 2 sekundách přesměrujeme na login
+      // 4. Po 2 sekundách přesměrujeme na login
       setTimeout(() => {
         router.push('/prihlaseni');
       }, 2000);

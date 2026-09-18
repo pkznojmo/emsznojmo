@@ -34,22 +34,18 @@ export async function GET(request: Request) {
     },
   });
 
-  // 1. Zpracování token_hash (z e-mailové šablony)
   if (token_hash && type) {
     const { error } = await supabase.auth.verifyOtp({ token_hash, type });
     if (!error) {
       return response;
     }
-    console.error('Chyba při ověření OTP tokenu:', error.message);
   }
 
-  // 2. Zpracování standardního kódu (PKCE)
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
       return response;
     }
-    console.error('Chyba při výměně kódu za session:', error.message);
   }
 
   return NextResponse.redirect(`${origin}/prihlaseni?error=Chyba%20overeni`);
