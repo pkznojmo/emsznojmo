@@ -171,7 +171,7 @@ export default function HomePage() {
                   <span className="text-lg font-bold text-slate-500">Kč</span>
                 </div>
                 <p className="text-sm text-slate-500 leading-relaxed">
-                  Ideální na vyzkoušení. V ceně je zapůjčení speciálního EMS oblečení, iontový nápoj na recepci a úvodní tělesná analýza s osobním trenérem.
+                  Ideální na vyzkoušení. V ceně je zapůjčení speciálního EMS oblečení.
                 </p>
               </div>
             </div>
