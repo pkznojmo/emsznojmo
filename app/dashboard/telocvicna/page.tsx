@@ -102,6 +102,7 @@ export default function WeeklySchedulePage() {
   const [weekOffset, setWeekOffset] = useState(0);
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [activeMobileDayIndex, setActiveMobileDayIndex] = useState<number>(0);
 
   // Stav pro Modal / Pop-up formulář
   const [selectedSlot, setSelectedSlot] = useState<SelectedSlotInfo | null>(null);
@@ -120,7 +121,6 @@ export default function WeeklySchedulePage() {
     const startDate = currentWeekDays[0].isoString;
     const endDate = currentWeekDays[6].isoString;
 
-    // Načtení rezervací tělocvičny spojené s meze-tabulkou profiles přes user_id
     const { data, error } = await supabase
       .from('reservations')
       .select('*, client:profiles!user_id(id, first_name, last_name, email, phone)')
@@ -160,6 +160,16 @@ export default function WeeklySchedulePage() {
 
     checkUser();
   }, [router, weekOffset]);
+
+  // Nastavit výchozí mobilní den na "Dnes" pokud je v aktuálním týdnu
+  useEffect(() => {
+    const todayIndex = currentWeekDays.findIndex(d => d.isToday);
+    if (todayIndex !== -1) {
+      setActiveMobileDayIndex(todayIndex);
+    } else {
+      setActiveMobileDayIndex(0);
+    }
+  }, [currentWeekDays]);
 
   // Vyhledávání klientů podle first_name a last_name
   useEffect(() => {
@@ -285,58 +295,54 @@ export default function WeeklySchedulePage() {
     }
   };
 
-  // Pomocná funkce pro převod "HH:MM" na počet minut od začátku dne
-const timeToMinutes = (timeStr: string): number => {
-  const [hours, minutes] = timeStr.trim().split(':').map(Number);
-  return hours * 60 + minutes;
-};
+  const timeToMinutes = (timeStr: string): number => {
+    const [hours, minutes] = timeStr.trim().split(':').map(Number);
+    return hours * 60 + minutes;
+  };
 
-// V useMemo pro matici dnů:
-const calculatedDaysMatrix = useMemo(() => {
-  return currentWeekDays.map(day => {
-    const slots = GENERATED_SLOTS.map(slot => {
-      const slotMin = timeToMinutes(slot);
+  const calculatedDaysMatrix = useMemo(() => {
+    return currentWeekDays.map(day => {
+      const slots = GENERATED_SLOTS.map(slot => {
+        const slotMin = timeToMinutes(slot);
 
-      const foundReservation = reservations.find(r => {
-        if (r.date !== day.isoString) return false;
+        const foundReservation = reservations.find(r => {
+          if (r.date !== day.isoString) return false;
 
-        let startMin: number;
-        let endMin: number;
+          let startMin: number;
+          let endMin: number;
 
-        if (r.time.includes('-')) {
-          const [startStr, endStr] = r.time.split('-');
-          startMin = timeToMinutes(startStr);
-          endMin = timeToMinutes(endStr);
-        } else {
-          // Pokud by v DB byl jen začátek bez pomlčky, počítáme s výchozími 30 min
-          startMin = timeToMinutes(r.time);
-          endMin = startMin + 30;
+          if (r.time.includes('-')) {
+            const [startStr, endStr] = r.time.split('-');
+            startMin = timeToMinutes(startStr);
+            endMin = timeToMinutes(endStr);
+          } else {
+            startMin = timeToMinutes(r.time);
+            endMin = startMin + 30;
+          }
+
+          return slotMin >= startMin && slotMin < endMin;
+        });
+
+        let status: 'FREE' | 'OCCUPIED_ME' | 'OCCUPIED_OTHER' = 'FREE';
+
+        if (foundReservation) {
+          if (foundReservation.trainer_id === currentUserId || foundReservation.user_id === currentUserId) {
+            status = 'OCCUPIED_ME';
+          } else {
+            status = 'OCCUPIED_OTHER';
+          }
         }
 
-        // Slot je obsazený, pokud spadá mezi začátek a konec rezervace
-        return slotMin >= startMin && slotMin < endMin;
+        return {
+          time: slot,
+          status,
+          reservation: foundReservation || null
+        };
       });
 
-      let status: 'FREE' | 'OCCUPIED_ME' | 'OCCUPIED_OTHER' = 'FREE';
-
-      if (foundReservation) {
-        if (foundReservation.trainer_id === currentUserId || foundReservation.user_id === currentUserId) {
-          status = 'OCCUPIED_ME';
-        } else {
-          status = 'OCCUPIED_OTHER';
-        }
-      }
-
-      return {
-        time: slot,
-        status,
-        reservation: foundReservation || null
-      };
+      return { ...day, slots };
     });
-
-    return { ...day, slots };
-  });
-}, [currentWeekDays, reservations, currentUserId]);
+  }, [currentWeekDays, reservations, currentUserId]);
 
   if (loading) {
     return (
@@ -346,20 +352,23 @@ const calculatedDaysMatrix = useMemo(() => {
     );
   }
 
+  const selectedMobileDayData = calculatedDaysMatrix[activeMobileDayIndex] || calculatedDaysMatrix[0];
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row text-gray-900">
       <Sidebar onLogout={async () => { await supabase.auth.signOut(); router.push('/prihlaseni'); }} />
 
-      <main className="flex-1 p-6 md:p-10 max-w-7xl space-y-8 overflow-x-hidden">
+      <main className="flex-1 p-4 sm:p-6 md:p-10 max-w-7xl space-y-6 md:space-y-8 overflow-x-hidden">
+        {/* HLAVIČKA */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Obsazenost tělocvičny 🏋️‍♂️</h1>
-            <p className="text-gray-500 mt-1">
-              Přehled využití tělocvičny na celý týden. Kliknutím na volný slot si zarezervuješ čas.
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Obsazenost tělocvičny 🏋️‍♂️</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Přehled využití tělocvičny na celý týden. Kliknutím na volný čas si zarezervuješ slot.
             </p>
           </div>
 
-          <div className="flex bg-white rounded-xl shadow-sm border border-gray-200 p-1 select-none items-center self-start md:self-auto">
+          <div className="flex bg-white rounded-xl shadow-sm border border-gray-200 p-1 select-none items-center justify-between self-stretch md:self-auto">
             <button 
               onClick={() => setWeekOffset(prev => prev - 1)} 
               className="p-2 hover:bg-gray-100 rounded-lg transition text-gray-400 hover:text-indigo-600"
@@ -380,23 +389,100 @@ const calculatedDaysMatrix = useMemo(() => {
           </div>
         </header>
 
-        <section className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
-          <div className="flex flex-wrap gap-6 text-xs font-bold text-gray-600 px-1 border-b border-gray-100 pb-4">
+        {/* LEGENDA */}
+        <section className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
+          <div className="flex flex-wrap gap-4 sm:gap-6 text-xs font-bold text-gray-600 border-b border-gray-100 pb-4">
             <div className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded bg-slate-200 border border-slate-300" />
-              <span>Volno (Klikni pro rezervaci)</span>
+              <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-slate-200 border border-slate-300" />
+              <span>Volno</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded bg-orange-500" />
+              <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-green-500" />
               <span>Obsazeno mnou</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded bg-red-500" />
+              <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-red-500" />
               <span>Obsazeno jiným trenérem</span>
             </div>
           </div>
 
-          <div className="overflow-x-auto min-w-full pt-2">
+          {/* MOBILNÍ ZOBRAZENÍ (< md) */}
+          <div className="block md:hidden space-y-4">
+            {/* Přepínač dnů (Scrollable Tabs) */}
+            <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-none">
+              {calculatedDaysMatrix.map((day, idx) => {
+                const isActive = idx === activeMobileDayIndex;
+                return (
+                  <button
+                    key={day.isoString}
+                    onClick={() => setActiveMobileDayIndex(idx)}
+                    className={`flex-shrink-0 px-3 py-2 rounded-xl text-center border transition-all ${
+                      isActive 
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
+                        : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="text-[10px] font-bold uppercase opacity-80">
+                      {day.isToday ? 'Dnes' : DAYS_NAMES[day.dayOfWeek].slice(0, 3)}
+                    </div>
+                    <div className="text-xs font-black">{day.formatted.split('.')[0]}.{day.formatted.split('.')[1]}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Vybraný den hlavička */}
+            <div className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-200">
+              <div className="font-bold text-gray-800 text-sm">
+                {selectedMobileDayData.formatted} ({DAYS_NAMES[selectedMobileDayData.dayOfWeek]})
+              </div>
+              {selectedMobileDayData.isToday && (
+                <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
+                  Dnes
+                </span>
+              )}
+            </div>
+
+            {/* Grid časových slotů na mobilu (2 sloupce) */}
+            <div className="grid grid-cols-2 gap-2">
+              {selectedMobileDayData.slots.map(slot => {
+                let statusBg = 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-gray-700 cursor-pointer';
+                let statusLabel = 'Volno';
+
+                if (slot.status === 'OCCUPIED_ME') {
+                  statusBg = 'bg-green-500 hover:bg-green-600 border-green-600 text-white cursor-pointer';
+                  statusLabel = slot.reservation?.client 
+                    ? `${slot.reservation.client.first_name} ${slot.reservation.client.last_name.slice(0, 1)}.`
+                    : 'Moje rezervace';
+                } else if (slot.status === 'OCCUPIED_OTHER') {
+                  statusBg = 'bg-red-500/10 border-red-200 text-red-600 cursor-not-allowed';
+                  statusLabel = 'Obsazeno';
+                }
+
+                return (
+                  <button
+                    key={slot.time}
+                    disabled={slot.status === 'OCCUPIED_OTHER'}
+                    onClick={() => openSlotModal(selectedMobileDayData.isoString, selectedMobileDayData.formatted, slot.time, slot.status, slot.reservation)}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between transition text-left ${statusBg}`}
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold">{slot.time}</span>
+                      <span className="text-[10px] opacity-80 truncate max-w-[100px]">{statusLabel}</span>
+                    </div>
+                    {slot.status === 'OCCUPIED_OTHER' ? (
+                      <Lock size={12} className="opacity-60 shrink-0" />
+                    ) : (
+                      <Clock size={12} className="opacity-60 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* DESKTOPOVÉ ZOBRAZENÍ (>= md) */}
+          <div className="hidden md:block overflow-x-auto min-w-full pt-2">
             <div className="inline-block min-w-[950px] w-full">
               <div className="flex items-center mb-1 text-[10px] font-bold text-gray-400 text-center">
                 <div className="w-36 shrink-0 text-left pl-2">Datum a den</div>
@@ -425,7 +511,7 @@ const calculatedDaysMatrix = useMemo(() => {
                         let titleText = `${day.formatted} v ${slot.time} – Volno`;
 
                         if (slot.status === 'OCCUPIED_ME') {
-                          bgClass = 'bg-orange-500 hover:bg-orange-600 cursor-pointer';
+                          bgClass = 'bg-green-500 hover:bg-green-600 cursor-pointer';
                           titleText = `${day.formatted} v ${slot.time} – Obsazeno mnou (Klikni pro detail)`;
                         } else if (slot.status === 'OCCUPIED_OTHER') {
                           bgClass = 'bg-red-500 opacity-90 cursor-not-allowed';
@@ -454,9 +540,10 @@ const calculatedDaysMatrix = useMemo(() => {
         </section>
       </main>
 
+      {/* POP-UP / MODAL (Plně optimalizováno pro mobily) */}
       {selectedSlot && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-lg p-6 space-y-6 relative overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-lg p-5 sm:p-6 space-y-5 sm:space-y-6 relative overflow-hidden max-h-[90vh] overflow-y-auto">
             <button 
               onClick={closeModal}
               className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition"
@@ -464,20 +551,20 @@ const calculatedDaysMatrix = useMemo(() => {
               <X size={20} />
             </button>
 
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-semibold">
+            <div className="space-y-1 pr-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-semibold">
                 <Clock size={14} />
                 <span>{selectedSlot.formattedDate} v {selectedSlot.slotTime} ({selectedSlot.slotTime}–{getEndTime(selectedSlot.slotTime)})</span>
               </div>
-              <h2 className="text-xl font-bold text-gray-900">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900">
                 {selectedSlot.status === 'OCCUPIED_ME' ? 'Spravovat moji rezervaci' : 'Rezervovat tělocvičnu'}
               </h2>
             </div>
 
             {selectedSlot.status === 'OCCUPIED_ME' ? (
               <div className="space-y-4">
-                <div className="p-4 bg-orange-50 border border-orange-100 rounded-xl text-orange-950 space-y-2 text-sm">
-                  <p className="font-bold flex items-center gap-2 text-orange-800">
+                <div className="p-4 bg-green-50 border border-green-100 rounded-xl text-green-950 space-y-2 text-sm">
+                  <p className="font-bold flex items-center gap-2 text-green-800">
                     <UserCheck size={18} />
                     Rezervováno vámi
                   </p>
@@ -491,16 +578,16 @@ const calculatedDaysMatrix = useMemo(() => {
                     <p>Typ: <strong>Osobní trénink / Blokace trenéra</strong></p>
                   )}
                   {selectedSlot.existingReservation?.trainer && (
-                    <p className="text-xs text-orange-700">Detail: {selectedSlot.existingReservation.trainer}</p>
+                    <p className="text-xs text-green-700">Detail: {selectedSlot.existingReservation.trainer}</p>
                   )}
                 </div>
 
-                <div className="pt-2 flex justify-between items-center">
+                <div className="pt-2 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
                   <button
                     type="button"
                     onClick={handleDeleteBooking}
                     disabled={isSubmitting}
-                    className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition flex items-center gap-2"
+                    className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition flex items-center justify-center gap-2"
                   >
                     <Trash2 size={16} />
                     <span>Zrušit rezervaci</span>
@@ -516,12 +603,12 @@ const calculatedDaysMatrix = useMemo(() => {
                 </div>
               </div>
             ) : (
-              <div className="space-y-5">
-                <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl text-sm font-semibold">
+              <div className="space-y-4 sm:space-y-5">
+                <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl text-xs sm:text-sm font-semibold">
                   <button
                     type="button"
                     onClick={() => setAssigneeType('CLIENT')}
-                    className={`py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition ${
+                    className={`py-2 px-2 sm:px-3 rounded-lg flex items-center justify-center gap-1.5 sm:gap-2 transition ${
                       assigneeType === 'CLIENT' 
                         ? 'bg-white text-indigo-600 shadow-sm' 
                         : 'text-gray-500 hover:text-gray-800'
@@ -534,7 +621,7 @@ const calculatedDaysMatrix = useMemo(() => {
                   <button
                     type="button"
                     onClick={() => setAssigneeType('SELF')}
-                    className={`py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition ${
+                    className={`py-2 px-2 sm:px-3 rounded-lg flex items-center justify-center gap-1.5 sm:gap-2 transition ${
                       assigneeType === 'SELF' 
                         ? 'bg-white text-indigo-600 shadow-sm' 
                         : 'text-gray-500 hover:text-gray-800'
@@ -601,9 +688,9 @@ const calculatedDaysMatrix = useMemo(() => {
                     )}
                   </div>
                 ) : (
-                  <div className="p-4 bg-orange-50 border border-orange-100 rounded-xl text-orange-900 text-sm space-y-1">
+                  <div className="p-4 bg-green-50 border border-green-100 rounded-xl text-green-900 text-sm space-y-1">
                     <p className="font-bold flex items-center gap-1.5">
-                      <UserCheck size={18} className="text-orange-600" />
+                      <UserCheck size={18} className="text-green-600" />
                       Osobní trénink / Blokace
                     </p>
                   </div>
@@ -622,7 +709,7 @@ const calculatedDaysMatrix = useMemo(() => {
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-2">
+                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-2">
                   <button
                     type="button"
                     onClick={closeModal}
@@ -635,7 +722,7 @@ const calculatedDaysMatrix = useMemo(() => {
                     type="button"
                     onClick={handleSaveBooking}
                     disabled={isSubmitting || (assigneeType === 'CLIENT' && !selectedClient)}
-                    className="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold shadow-md disabled:opacity-50 transition flex items-center gap-2"
+                    className="px-5 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white text-sm font-semibold shadow-md disabled:opacity-50 transition flex items-center justify-center gap-2"
                   >
                     {isSubmitting ? (
                       <>
