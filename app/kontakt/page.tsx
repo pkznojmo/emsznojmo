@@ -32,7 +32,7 @@ export default function ContactPage() {
       role: "Certifikovaná EMS trenérka",
       specialization: "Ve vývoji",
       credo: "Ve vývoji",
-      image: "/Monika.jpg",
+      image: "/Monika.png",
       phone: "+420 777 535 302",
       email: "info@pkznojmo.cz"
     },
