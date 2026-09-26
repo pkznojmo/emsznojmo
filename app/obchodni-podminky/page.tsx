@@ -14,7 +14,7 @@ export default function ObchodniPodminkyPage() {
             </p>
 
             <p className="mt-4 text-base font-medium text-gray-600">
-              Účinné od 15. září 2026
+              Účinné od 26. září 2026
             </p>
 
             <div className="mt-8 rounded-2xl border border-gray-200 bg-gray-50 p-6 text-base leading-7 text-gray-700">
@@ -174,13 +174,29 @@ export default function ObchodniPodminkyPage() {
 
               <p>
                 <strong>11.</strong> Platbu lze provést prostřednictvím platební
-                brány, nebo QR kódem. Objednávka je splatná způsobem a ve lhůtě
+                brány GoPay, nebo QR kódem. Objednávka je splatná způsobem a ve lhůtě
                 uvedené při objednání. Náklady účtované klientovou bankou nebo
                 jiným poskytovatelem platebních služeb nese klient.
               </p>
 
               <p>
-                <strong>12.</strong> Cena balíčku se hradí před jeho čerpáním.
+                <strong>12.</strong> Vznikne-li klientovi podle smlouvy, těchto obchodních
+                podmínek nebo právních předpisů nárok na vrácení platby uhrazené prostřednictvím
+                platební brány GoPay, provozovatel vrátí příslušnou částku výhradně prostřednictvím
+                GoPay provedením storna neboli refundace původní transakce. Taková platba se
+                nevrací v hotovosti ani běžným bankovním převodem. Pouze pokud GoPay nebo
+                banka refundaci původní transakce prokazatelně odmítne či technicky neumožní,
+                dohodne provozovatel s klientem náhradní způsob vrácení.
+              </p>
+
+              <p>
+                <strong>13.</strong> Platba přijatá jiným způsobem než prostřednictvím GoPay 
+                se vrací stejným způsobem, jakým byla přijata, ledaže se provozovatel s 
+                klientem dohodne jinak a klientovi tím nevzniknou další náklady.
+              </p>
+
+              <p>
+                <strong>14.</strong> Cena balíčku se hradí před jeho čerpáním.
                 Balíček je aktivován přijetím platby, není-li při objednávce
                 uvedeno pozdější datum. Jednotlivé vstupy nelze vyplatit v
                 hotovosti, směnit za jinou službu ani převádět na jinou osobu,
@@ -188,7 +204,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>13.</strong> Provozovatel může ceny do budoucna měnit.
+                <strong>15.</strong> Provozovatel může ceny do budoucna měnit.
                 Změna se nedotkne již zaplaceného balíčku ani potvrzené
                 rezervace.
               </p>
@@ -198,20 +214,29 @@ export default function ObchodniPodminkyPage() {
           {/* 4 */}
           <section className="mb-14">
             <h2 className="mb-6 border-b border-gray-200 pb-3 text-2xl font-bold text-gray-950">
-              4. Platnost balíčků a jejich prodloužení
+              4. Platnost balíčků a nevyčerpaný kredit
             </h2>
 
             <div className="space-y-6">
               <p>
-                <strong>14.</strong> Balíček 10 vstupů platí 4 měsíce a balíček
-                20 vstupů 6 měsíců od aktivace. Nevyčerpané vstupy po uplynutí
-                platnosti zanikají, pokud nebyla platnost prodloužena podle
-                následujících odstavců nebo pokud kogentní právní předpis
-                stanoví jinak.
+                <strong>16.</strong> Balíček 10 vstupů platí 4 měsíce a balíček 20 vstupů 6 měsíců od 
+                aktivace. Nevyčerpaným kreditem se rozumějí zaplacené, ale dosud nevyužité vstupy z 
+                balíčku. Nevyčerpané vstupy po uplynutí platnosti balíčku bez náhrady zanikají a jejich 
+                cena se klientovi nevrací, pokud nebyla platnost prodloužena podle následujících odstavců 
+                nebo pokud klientovi nevznikne nárok na vrácení podle právních předpisů či těchto obchodních podmínek.
+
               </p>
 
               <p>
-                <strong>15.</strong> Klient může bez zbytečného odkladu požádat
+                <strong>17.</strong> Klient nemá nárok na vyplacení, vrácení ani převod nevyčerpaného kreditu 
+                pouze z důvodu, že jej během doby platnosti nestihl nebo nechtěl využít. Tím není dotčeno 
+                právo spotřebitele odstoupit od smlouvy, právo z uznané reklamace ani právo na vrácení ceny 
+                při neposkytnutí služby ze strany provozovatele.
+
+              </p>
+
+              <p>
+                <strong>18.</strong> Klient může bez zbytečného odkladu požádat
                 o přiměřené prodloužení při doložené nemoci, těhotenství,
                 vážném úrazu nebo jiné závažné zdravotní překážce, která mu po
                 podstatnou část platnosti bránila službu bezpečně čerpat.
@@ -221,14 +246,14 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>16.</strong> Doba prodloužení se určí podle délky a
+                <strong>19.</strong> Doba prodloužení se určí podle délky a
                 povahy překážky, zpravidla o dobu, po kterou klient nemohl
                 trénovat. Klient a provozovatel mohou dohodnout také
                 přerušení platnosti nebo jiné spravedlivé řešení.
               </p>
 
               <p>
-                <strong>17.</strong> Balíček je osobní a nepřevoditelný. To
+                <strong>20.</strong> Balíček je osobní a nepřevoditelný. To
                 neomezuje přechod práv v případech stanovených zákonem.
               </p>
             </div>
@@ -242,14 +267,14 @@ export default function ObchodniPodminkyPage() {
 
             <div className="space-y-6">
               <p>
-                <strong>18.</strong> Lekci je nutné předem rezervovat.
+                <strong>21.</strong> Lekci je nutné předem rezervovat.
                 Rezervace je závazná po jejím potvrzení. Klient je povinen
                 zrušit termín způsobem umožněným rezervačním systémem nebo
                 prostřednictvím kontaktního e-mailu či telefonu.
               </p>
 
               <p>
-                <strong>19.</strong> Klient může lekci bezplatně zrušit
+                <strong>22.</strong> Klient může lekci bezplatně zrušit
                 nejpozději 24 hodin před jejím začátkem. Zaplacená jednotlivá
                 lekce zůstane po dohodě použitelná pro náhradní termín; u
                 balíčku se vstup neodečte.
@@ -338,7 +363,7 @@ export default function ObchodniPodminkyPage() {
               </div>
 
               <p>
-                <strong>20.</strong> Při zrušení méně než 24 hodin před začátkem
+                <strong>23.</strong> Při zrušení méně než 24 hodin před začátkem
                 nebo při nedostavení se může provozovatel jednotlivou lekci
                 považovat za vyčerpanou nebo odečíst jeden vstup z balíčku.
                 Totéž platí, jestliže se lekce nemohla uskutečnit proto, že
@@ -349,14 +374,14 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>21.</strong> Dostaví-li se klient pozdě, může být lekce
+                <strong>24.</strong> Dostaví-li se klient pozdě, může být lekce
                 zkrácena tak, aby nebyl narušen následující provoz. Je-li
                 zpoždění takové, že nelze trénink bezpečně uskutečnit, může být
                 lekce považována za pozdě zrušenou.
               </p>
 
               <p>
-                <strong>22.</strong> Zruší-li lekci provozovatel, nabídne
+                <strong>25.</strong> Zruší-li lekci provozovatel, nabídne
                 klientovi náhradní termín nebo vrátí příslušný vstup do
                 balíčku. U jednotlivě zaplacené lekce si klient může místo
                 náhradního termínu zvolit vrácení ceny. Provozovatel neodpovídá
@@ -374,7 +399,7 @@ export default function ObchodniPodminkyPage() {
 
             <div className="space-y-6">
               <p>
-                <strong>23.</strong> EMS trénink je fyzická aktivita s intenzivní
+                <strong>26.</strong> EMS trénink je fyzická aktivita s intenzivní
                 svalovou stimulací. Klient smí lekci absolvovat pouze tehdy,
                 je-li k ní zdravotně způsobilý a netrpí stavem, který
                 představuje kontraindikaci nebo vyžaduje předchozí souhlas
@@ -382,7 +407,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>24.</strong> Před první lekcí klient pravdivě vyplní
+                <strong>27.</strong> Před první lekcí klient pravdivě vyplní
                 zdravotní dotazník, seznámí se s kontraindikacemi a podepíše
                 informovaný souhlas. Při jakékoli nejistotě, chronickém
                 onemocnění, užívání významné medikace, po operaci, úrazu nebo
@@ -391,14 +416,14 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>25.</strong> Klient je povinen před každou lekcí sdělit
+                <strong>28.</strong> Klient je povinen před každou lekcí sdělit
                 trenérovi změnu zdravotního stavu, aktuální bolest, nevolnost
                 nebo jinou okolnost významnou pro bezpečnost. Během lekce ihned
                 oznámí neobvyklé či nepříjemné pocity a řídí se pokyny trenéra.
               </p>
 
               <p>
-                <strong>26.</strong> Provozovatel nebo trenér může lekci
+                <strong>29.</strong> Provozovatel nebo trenér může lekci
                 odmítnout, upravit nebo ukončit, má-li důvodnou pochybnost o
                 bezpečnosti, zdravotní způsobilosti, ovlivnění alkoholem či
                 jinými látkami nebo plnění pokynů. Takové rozhodnutí
@@ -406,7 +431,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>27.</strong> Konkrétní seznam kontraindikací a
+                <strong>30.</strong> Konkrétní seznam kontraindikací a
                 bezpečnostní režim jsou součástí zdravotního dotazníku a
                 informovaného souhlasu a mohou být upravovány podle aktuálních
                 odborných a výrobcem stanovených pravidel. V případě rozporu se
@@ -414,7 +439,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>28.</strong> Provozovatel neodpovídá za újmu vzniklou
+                <strong>31.</strong> Provozovatel neodpovídá za újmu vzniklou
                 zatajením nebo nepravdivým uvedením zdravotních informací,
                 nerespektováním pokynů nebo jednáním klienta v rozporu s
                 podmínkami, pokud mezi tímto jednáním a újmou existuje příčinná
@@ -432,25 +457,25 @@ export default function ObchodniPodminkyPage() {
 
             <div className="space-y-6">
               <p>
-                <strong>29.</strong> Klient přijde včas, dodržuje hygienická a
+                <strong>32.</strong> Klient přijde včas, dodržuje hygienická a
                 provozní pravidla bazénu a studia, používá předepsané EMS
                 oblečení a zachází šetrně se zapůjčeným vybavením.
               </p>
 
               <p>
-                <strong>30.</strong> Klient dodržuje pokyny trenéra, nepřipojuje
+                <strong>33.</strong> Klient dodržuje pokyny trenéra, nepřipojuje
                 ani nenastavuje zařízení bez jeho souhlasu a neumožní vstup
                 další osobě bez předchozí dohody.
               </p>
 
               <p>
-                <strong>31.</strong> Klient odpovídá za škodu, kterou způsobil
+                <strong>34.</strong> Klient odpovídá za škodu, kterou způsobil
                 zaviněným porušením svých povinností. Běžné opotřebení se za
                 škodu nepovažuje.
               </p>
 
               <p>
-                <strong>32.</strong> Trenér volí intenzitu a průběh tréninku s
+                <strong>35.</strong> Trenér volí intenzitu a průběh tréninku s
                 ohledem na zkušenosti, sdělený zdravotní stav a aktuální reakci
                 klienta. Provozovatel nezaručuje konkrétní sportovní, estetický,
                 hmotnostní ani zdravotní výsledek.
@@ -466,7 +491,7 @@ export default function ObchodniPodminkyPage() {
 
             <div className="space-y-6">
               <p>
-                <strong>33.</strong> Osoba mladší 18 let může EMS trénink
+                <strong>36.</strong> Osoba mladší 18 let může EMS trénink
                 absolvovat pouze s předchozím písemným souhlasem zákonného
                 zástupce a po vyhodnocení vhodnosti tréninku provozovatelem.
                 Zákonný zástupce odpovídá za pravdivost údajů, které za
@@ -474,7 +499,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>34.</strong> Před první lekcí nezletilého musí zákonný
+                <strong>37.</strong> Před první lekcí nezletilého musí zákonný
                 zástupce podepsat zdravotní dotazník a informovaný souhlas.
                 Provozovatel může požadovat vyjádření lékaře, zejména při
                 pochybnostech o zdravotní způsobilosti nebo s ohledem na věk a
@@ -482,7 +507,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>35.</strong> Provozovatel může stanovit minimální věk
+                <strong>38.</strong> Provozovatel může stanovit minimální věk
                 nebo další omezení podle návodu výrobce zařízení, aktuálních
                 odborných doporučení a individuálního posouzení. Samotný
                 souhlas zákonného zástupce nezakládá nárok na provedení lekce,
@@ -499,7 +524,7 @@ export default function ObchodniPodminkyPage() {
 
             <div className="space-y-6">
               <p>
-                <strong>36.</strong> Spotřebitel, který koupí balíček nebo jinou
+                <strong>39.</strong> Spotřebitel, který koupí balíček nebo jinou
                 službu prostřednictvím internetu, může od smlouvy odstoupit bez
                 uvedení důvodu do 14 dnů od jejího uzavření, není-li dána
                 zákonná výjimka. Oznámení stačí ve lhůtě odeslat na{' '}
@@ -513,14 +538,17 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>37.</strong> Po odstoupení provozovatel vrátí bez
-                zbytečného odkladu, nejpozději do 14 dnů, přijaté peněžní
-                prostředky stejným způsobem, jakým je obdržel, nedohodne-li se
-                se spotřebitelem jinak a nevzniknou-li mu tím další náklady.
+                <strong>40.</strong> Po odstoupení provozovatel vrátí bez zbytečného 
+                odkladu, nejpozději do 14 dnů, přijaté peněžní prostředky. Byla-li 
+                platba provedena prostřednictvím GoPay, bude vrácena prostřednictvím GoPay 
+                jako storno neboli refundace původní transakce. U ostatních plateb se použije 
+                stejný způsob, jakým provozovatel platbu přijal, nedohodne-li se provozovatel 
+                se spotřebitelem jinak a nevzniknou-li spotřebiteli tímto postupem další náklady.
+
               </p>
 
               <p>
-                <strong>38.</strong> Požádá-li spotřebitel výslovně, aby
+                <strong>41.</strong> Požádá-li spotřebitel výslovně, aby
                 poskytování služby začalo před uplynutím lhůty pro odstoupení, a
                 následně odstoupí, uhradí poměrnou část ceny za služby skutečně
                 poskytnuté do okamžiku odstoupení. Po úplném poskytnutí služby
@@ -531,7 +559,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>39.</strong> U lekce objednané na konkrétní datum nebo
+                <strong>42.</strong> U lekce objednané na konkrétní datum nebo
                 období může být právo na odstoupení vyloučeno, jde-li o službu
                 související s využitím volného času a smlouva stanoví konkrétní
                 termín plnění. Tím nejsou dotčena storno pravidla v článku 5
@@ -539,7 +567,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>40.</strong> Odstoupení od smlouvy se nedotýká již řádně
+                <strong>43.</strong> Odstoupení od smlouvy se nedotýká již řádně
                 poskytnuté služby ani povinnosti uhradit poměrnou část ceny
                 podle zákona.
               </p>
@@ -554,14 +582,14 @@ export default function ObchodniPodminkyPage() {
 
             <div className="space-y-6">
               <p>
-                <strong>41.</strong> Provozovatel odpovídá, že služba bude
+                <strong>44.</strong> Provozovatel odpovídá, že služba bude
                 poskytnuta v ujednaném rozsahu, čase a kvalitě odpovídající její
                 povaze. Služba je vadná, není-li poskytnuta v souladu se
                 smlouvou nebo právními předpisy.
               </p>
 
               <p>
-                <strong>42.</strong> Klient uplatní reklamaci bez zbytečného
+                <strong>45.</strong> Klient uplatní reklamaci bez zbytečného
                 odkladu na{' '}
                 <a
                   href="mailto:info@pkznojmo.cz"
@@ -575,14 +603,14 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>43.</strong> Provozovatel při uplatnění reklamace vydá
+                <strong>46.</strong> Provozovatel při uplatnění reklamace vydá
                 písemné potvrzení o datu, obsahu, požadovaném způsobu vyřízení a
                 kontaktních údajích klienta. Po vyřízení vydá potvrzení o
                 způsobu a datu vyřízení, případně písemné odůvodnění zamítnutí.
               </p>
 
               <p>
-                <strong>44.</strong> Reklamace spotřebitele bude vyřízena včetně
+                <strong>47.</strong> Reklamace spotřebitele bude vyřízena včetně
                 odstranění vady a informování spotřebitele nejpozději do 30 dnů,
                 pokud se strany nedohodnou na delší lhůtě. Podle povahy vady
                 může klient požadovat zejména řádné opakování služby, přiměřenou
@@ -590,7 +618,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>45.</strong> Reklamací nejsou dotčena další práva
+                <strong>48.</strong> Reklamací nejsou dotčena další práva
                 klienta podle občanského zákoníku a zákona o ochraně
                 spotřebitele.
               </p>
@@ -605,21 +633,21 @@ export default function ObchodniPodminkyPage() {
 
             <div className="space-y-6">
               <p>
-                <strong>46.</strong> Klient si své osobní věci zabezpečí a
+                <strong>49.</strong> Klient si své osobní věci zabezpečí a
                 využije místa určená k jejich odložení. Cennosti do provozovny
                 nenosí, případně se předem domluví s trenérem na jejich
                 bezpečném uložení.
               </p>
 
               <p>
-                <strong>47.</strong> Odpovědnost za odložené věci a za újmu se
+                <strong>50.</strong> Odpovědnost za odložené věci a za újmu se
                 řídí občanským zákoníkem. Žádné ustanovení těchto podmínek
                 nevylučuje ani neomezuje právo klienta na náhradu újmy v
                 rozsahu, v němž takové omezení zákon nepřipouští.
               </p>
 
               <p>
-                <strong>48.</strong> Klient bere na vědomí, že vstup a pohyb v
+                <strong>51.</strong> Klient bere na vědomí, že vstup a pohyb v
                 areálu Plaveckého bazénu Louka se může řídit také provozním
                 řádem areálu. Za služby a prostory provozované třetí osobou
                 odpovídá jejich provozovatel; EMS Znojmo odpovídá za vlastní
@@ -636,7 +664,7 @@ export default function ObchodniPodminkyPage() {
 
             <div className="space-y-6">
               <p>
-                <strong>49.</strong> Správcem osobních údajů je Plavecký klub
+                <strong>52.</strong> Správcem osobních údajů je Plavecký klub
                 Znojmo z. s., IČO 06441254, se sídlem Marušky Kudeříkové 622/8,
                 669 02 Znojmo, e-mail{' '}
                 <a
@@ -649,7 +677,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>50.</strong> Provozovatel zpracovává identifikační,
+                <strong>53.</strong> Provozovatel zpracovává identifikační,
                 kontaktní, objednávkové a platební údaje za účelem uzavření a
                 plnění smlouvy, vedení rezervací, účetnictví, ochrany právních
                 nároků a plnění právních povinností. Rozsah, právní základy,
@@ -659,7 +687,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>51.</strong> Údaje o zdravotním stavu jsou zvláštní
+                <strong>54.</strong> Údaje o zdravotním stavu jsou zvláštní
                 kategorií osobních údajů. Provozovatel je zpracovává pouze v
                 nezbytném rozsahu pro bezpečné posouzení a vedení EMS tréninku
                 a na odpovídajícím právním základě, zpravidla s výslovným
@@ -670,7 +698,7 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>52.</strong> Klient má za podmínek právních předpisů
+                <strong>55.</strong> Klient má za podmínek právních předpisů
                 právo na přístup, opravu, výmaz, omezení zpracování,
                 přenositelnost, námitku a právo podat stížnost u Úřadu pro
                 ochranu osobních údajů.
@@ -718,14 +746,14 @@ export default function ObchodniPodminkyPage() {
 
             <div className="space-y-6">
               <p>
-                <strong>53.</strong> Smlouva na jednotlivou lekci zaniká jejím
+                <strong>56.</strong> Smlouva na jednotlivou lekci zaniká jejím
                 řádným poskytnutím a vypořádáním. Smlouva na balíček zaniká
                 vyčerpáním všech vstupů nebo uplynutím doby platnosti, aniž jsou
                 dotčena práva, která mají trvat i poté.
               </p>
 
               <p>
-                <strong>54.</strong> Provozovatel může od smlouvy odstoupit nebo
+                <strong>57.</strong> Provozovatel může od smlouvy odstoupit nebo
                 další poskytování služeb ukončit při závažném či opakovaném
                 porušení bezpečnostních pokynů, narušování provozu, agresivním
                 jednání nebo neuhrazení ceny. Nevyčerpanou část ceny vypořádá
@@ -734,9 +762,12 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>55.</strong> Nemůže-li provozovatel dlouhodobě službu
-                poskytovat, nabídne přiměřené prodloužení, náhradní plnění nebo
-                vrátí cenu nevyčerpaných vstupů.
+                <strong>58.</strong> Nemůže-li provozovatel dlouhodobě službu poskytovat, 
+                nabídne klientovi přiměřené prodloužení platnosti balíčku, náhradní 
+                plnění nebo vrátí cenu nevyčerpaných vstupů vypočtenou podle ceny jedné 
+                lekce v zakoupeném balíčku. Platbu přijatou prostřednictvím GoPay vrátí 
+                prostřednictvím GoPay jako storno neboli refundaci původní transakce.
+
               </p>
             </div>
           </section>
@@ -749,7 +780,7 @@ export default function ObchodniPodminkyPage() {
 
             <div className="space-y-6">
               <p>
-                <strong>56.</strong> Právní vztahy se řídí právem České
+                <strong>59.</strong> Právní vztahy se řídí právem České
                 republiky, zejména zákonem č. 89/2012 Sb., občanským zákoníkem,
                 a zákonem č. 634/1992 Sb., o ochraně spotřebitele. Volbou práva
                 nesmí být spotřebitel zbaven ochrany, kterou mu poskytují
@@ -757,13 +788,13 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>57.</strong> Je-li některé ustanovení neplatné nebo
+                <strong>60.</strong> Je-li některé ustanovení neplatné nebo
                 neúčinné, nemá to vliv na ostatní ustanovení. Místo něj se
                 použije právní úprava, která se jeho účelu nejvíce blíží.
               </p>
 
               <p>
-                <strong>58.</strong> Provozovatel může podmínky přiměřeně měnit
+                <strong>61.</strong> Provozovatel může podmínky přiměřeně měnit
                 z důvodu změny právních předpisů, služeb, cen nebo provozních a
                 technických podmínek. Na již uzavřené jednorázové smlouvy se
                 použije znění účinné při jejich uzavření. U trvajícího vztahu
@@ -772,8 +803,8 @@ export default function ObchodniPodminkyPage() {
               </p>
 
               <p>
-                <strong>59.</strong> Tyto obchodní podmínky nabývají účinnosti
-                dne 15. září 2026.
+                <strong>62.</strong> Tyto obchodní podmínky nabývají účinnosti
+                dne 26. září 2026.
               </p>
             </div>
           </section>
