@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../../../lib/supabase';
@@ -63,8 +63,8 @@ const VIP_PACKAGES: CreditPackage[] = [
     id: 'single',
     credits: 1,
     title: '1 lekce',
-    priceCZK: 10,
-    pricePerCredit: 10,
+    priceCZK: 500,
+    pricePerCredit: 500,
     badge: 'VIP cena',
   },
 ];
@@ -76,7 +76,8 @@ const isVipRole = (role?: string) => {
   return VIP_ROLES.includes(role.toUpperCase());
 };
 
-export default function KredityPage() {
+// Vnitřní komponenta pracující s useSearchParams
+function KredityContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -228,12 +229,10 @@ export default function KredityPage() {
       }
 
       if (data.gw_url) {
-        // Pokud je Javascriptový SDK GoPay načten, vyvoláme Inline bránu
         if (typeof window !== 'undefined' && (window as any)._gopay) {
           (window as any)._gopay.checkout(
             { gatewayUrl: data.gw_url, inline: true },
             async (checkoutResult: any) => {
-              // Callback po zavření brány
               if (checkoutResult && checkoutResult.id) {
                 await verifyPaymentStatus(checkoutResult.id);
               }
@@ -241,7 +240,6 @@ export default function KredityPage() {
             }
           );
         } else {
-          // Fallback na přesměrování (Redirect)
           window.location.href = data.gw_url;
         }
       } else {
@@ -499,5 +497,21 @@ export default function KredityPage() {
 
       </main>
     </div>
+  );
+}
+
+// Hlavní export s hranicí Suspense pro úspěšný prerender/build
+export default function KredityPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-500 font-medium text-sm">
+          <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
+          Načítám...
+        </div>
+      }
+    >
+      <KredityContent />
+    </Suspense>
   );
 }
