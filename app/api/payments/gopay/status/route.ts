@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { processCreditPayment } from '../notify/route';
 
 const GOPAY_BASE_URL = process.env.GOPAY_ENV === 'production' 
   ? 'https://gate.gopay.cz/api' 
@@ -40,6 +41,12 @@ export async function GET(req: Request) {
     });
 
     const paymentDetails = await res.json();
+
+    // Pokud je zaplaceno, provede se připsání v DB (díky kontrole se nezapíše dvakrát)
+    if (paymentDetails.state === 'PAID') {
+      await processCreditPayment(paymentDetails);
+    }
+
     return NextResponse.json(paymentDetails);
   } catch (error) {
     return NextResponse.json({ message: 'Chyba při dotazu na stav platby' }, { status: 500 });
