@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../../../lib/supabase';
 import Sidebar from '../../comp/Sidebar';
@@ -29,7 +29,6 @@ interface CreditPackage {
   popular?: boolean;
 }
 
-// Ceník pro standardní klienty (CLIENT)
 const CLIENT_PACKAGES: CreditPackage[] = [
   {
     id: 'single',
@@ -59,19 +58,17 @@ const CLIENT_PACKAGES: CreditPackage[] = [
   },
 ];
 
-// Zvýhodněný ceník pro VIP, TRAINER, ADMIN atd.
 const VIP_PACKAGES: CreditPackage[] = [
   {
     id: 'single',
     credits: 1,
     title: '1 lekce',
-    priceCZK: 500,
-    pricePerCredit: 500,
+    priceCZK: 10,
+    pricePerCredit: 10,
     badge: 'VIP cena',
   },
 ];
 
-// Sjednocený seznam rolí s nárokem na VIP ceník
 const VIP_ROLES = ['VIP', 'TRAINER', 'ADMIN', 'VIP_TRAINER', 'SWIMMER'];
 
 const isVipRole = (role?: string) => {
@@ -81,24 +78,45 @@ const isVipRole = (role?: string) => {
 
 export default function KredityPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
   const [profile, setProfile] = useState<{ id: string; email?: string; full_name?: string; credit_balance: number; role?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Určení balíčků podle role načteného profilu
   const isVip = isVipRole(profile?.role);
   const currentPackages = isVip ? VIP_PACKAGES : CLIENT_PACKAGES;
-
-  // Výchozí balíček (inicializuje se prvním platným balíčkem)
   const [selectedPackage, setSelectedPackage] = useState<CreditPackage>(CLIENT_PACKAGES[1]);
 
-  // Při načtení/změně profilu se automaticky vybere odpovídající balíček ze zobrazené sady
+  // Načtení GoPay Javascript API (embed.js)
+  useEffect(() => {
+    const scriptId = 'gopay-embed-script';
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.type = 'text/javascript';
+      script.src = process.env.NEXT_PUBLIC_GOPAY_ENV === 'production'
+        ? 'https://gate.gopay.cz/gp-gw/js/embed.js'
+        : 'https://gw.sandbox.gopay.com/gp-gw/js/embed.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  // Kontrola navrácení z platební brány přes GET parametr ?id=...
+  useEffect(() => {
+    const paymentId = searchParams.get('id');
+    if (paymentId) {
+      verifyPaymentStatus(paymentId);
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     if (profile) {
       const packages = isVipRole(profile.role) ? VIP_PACKAGES : CLIENT_PACKAGES;
-      // Bezpečný výběr balíčku (pokud VIP obsahuje méně položek)
       setSelectedPackage(packages[1] || packages[0]);
     }
   }, [profile?.role]);
@@ -112,7 +130,6 @@ export default function KredityPage() {
         return;
       }
 
-      // Načtení profilu s použitím first_name a last_name
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, credit_balance, role')
@@ -134,7 +151,6 @@ export default function KredityPage() {
         });
       }
 
-      // Načtení historie kreditních transakcí
       const { data: txData } = await supabase
         .from('credit_transactions')
         .select('*')
@@ -162,12 +178,32 @@ export default function KredityPage() {
     router.refresh();
   };
 
+  // Ověření stavu platby na backendu
+  const verifyPaymentStatus = async (paymentId: string) => {
+    try {
+      const res = await fetch(`/api/payments/gopay/status?id=${paymentId}`);
+      const data = await res.json();
+
+      if (data.state === 'PAID') {
+        setSuccessMessage('Platba byla úspěšně provedena a kredity byly připsány na váš účet.');
+        loadUserData();
+      } else if (data.state === 'CANCELED') {
+        setErrorMessage('Platba byla zrušena.');
+      } else {
+        setErrorMessage(`Stav platby: ${data.state}`);
+      }
+    } catch (err) {
+      console.error('Chyba při ověřování platby:', err);
+    }
+  };
+
   // Zahájení platby přes GoPay
   const handleGoPayPayment = async () => {
     if (!profile || !selectedPackage) return;
 
     setProcessingPayment(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
 
     try {
       const response = await fetch('/api/payments/gopay', {
@@ -192,7 +228,22 @@ export default function KredityPage() {
       }
 
       if (data.gw_url) {
-        window.location.href = data.gw_url;
+        // Pokud je Javascriptový SDK GoPay načten, vyvoláme Inline bránu
+        if (typeof window !== 'undefined' && (window as any)._gopay) {
+          (window as any)._gopay.checkout(
+            { gatewayUrl: data.gw_url, inline: true },
+            async (checkoutResult: any) => {
+              // Callback po zavření brány
+              if (checkoutResult && checkoutResult.id) {
+                await verifyPaymentStatus(checkoutResult.id);
+              }
+              setProcessingPayment(false);
+            }
+          );
+        } else {
+          // Fallback na přesměrování (Redirect)
+          window.location.href = data.gw_url;
+        }
       } else {
         throw new Error('Nebyla doručena URL platební brány.');
       }
@@ -250,28 +301,14 @@ export default function KredityPage() {
           </div>
         </div>
 
-        {/* Upozornění na brzké spuštění platební brány */}
-        <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-amber-900 shadow-sm">
-          <div className="flex items-start gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0 text-amber-600 mt-0.5">
-              <Phone className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-base text-amber-950">Online platební brána bude brzy zprovozněna</h3>
-              <p className="text-sm text-amber-800/90 mt-0.5 leading-relaxed">
-                Na spuštění automatických online plateb pracujeme. Kredity a balíčky lekcí si zatím můžete pohodlně objednat telefonicky na naší lince.
-              </p>
-            </div>
+        {/* Úspěšná / Chybová hláška */}
+        {successMessage && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3 text-emerald-900 text-sm">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{successMessage}</span>
           </div>
-          <a
-            href="tel:+420777535302"
-            className="inline-flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold px-5 py-3 rounded-xl transition shadow-md shadow-amber-600/15 shrink-0 w-full sm:w-auto text-sm"
-          >
-            <Phone className="w-4 h-4" /> Objednat telefonicky
-          </a>
-        </div>
+        )}
 
-        {/* Chybová hláška */}
         {errorMessage && (
           <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center gap-3 text-rose-900 text-sm">
             <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
@@ -379,12 +416,10 @@ export default function KredityPage() {
             </div>
 
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-              
-
               <button
-                
+                onClick={handleGoPayPayment}
                 disabled={processingPayment || !selectedPackage}
-                className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold px-8 py-4 rounded-xl transition shadow-lg shadow-emerald-600/20 disabled:opacity-50 inline-flex items-center justify-center gap-3 w-full sm:w-auto text-base"
+                className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold px-8 py-4 rounded-xl transition shadow-lg shadow-emerald-600/20 disabled:opacity-50 inline-flex items-center justify-center gap-3 w-full sm:w-auto text-base cursor-pointer"
               >
                 {processingPayment ? (
                   <>
