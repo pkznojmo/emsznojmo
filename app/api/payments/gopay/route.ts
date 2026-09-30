@@ -12,7 +12,7 @@ async function getAccessToken(): Promise<string> {
   const clientSecret = process.env.GOPAY_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    throw new Error('Chybí konfigurace GOPAY_CLIENT_ID nebo GOPAY_CLIENT_SECRET.');
+    throw new Error('Chybí konfigurace GOPAY_CLIENT_ID nebo GOPAY_CLIENT_SECRET v .env');
   }
 
   const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
@@ -48,21 +48,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'Neúplné údaje v požadavku.' }, { status: 400 });
     }
 
+    const goid = Number(process.env.GOPAY_GOID);
+    if (!goid || isNaN(goid)) {
+      return NextResponse.json(
+        { message: 'Chybí nebo je neplatné GOPAY_GOID v nastavení serveru.' }, 
+        { status: 500 }
+      );
+    }
+
     // 1. Získání OAuth tokenu
     const accessToken = await getAccessToken();
 
     // 2. Příprava dat platby (částka v haléřích)
     const amountInHalers = Math.round(amountCZK * 100);
 
-    const paymentData = {
-      payer: {
-        contact: {
-          email: userEmail,
-        },
-      },
+    const paymentData: Record<string, any> = {
       target: {
         type: 'ACCOUNT',
-        goid: Number(process.env.GOPAY_GOID),
+        goid: goid,
       },
       amount: amountInHalers,
       currency: 'CZK',
@@ -75,17 +78,26 @@ export async function POST(req: Request) {
           count: 1,
         },
       ],
-      // DŮLEŽITÉ: Předání informací pro webhook, aby věděl, komu připsat kredity
-      custom_params: [
+      // Správný název pole pro parametry v GoPay API
+      additional_params: [
         { name: 'user_id', value: String(userId) },
         { name: 'credits', value: String(credits) },
       ],
       callback: {
-        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/kredity?status=return`,
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/kredity?status=return`,
         notification_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/gopay/notify`,
       },
       lang: 'CS',
     };
+
+    // Pokud uživatel má validní e-mail, předáme jej do GoPay
+    if (userEmail && typeof userEmail === 'string' && userEmail.includes('@')) {
+      paymentData.payer = {
+        contact: {
+          email: userEmail,
+        },
+      };
+    }
 
     // 3. Volání API pro založení platby
     const response = await fetch(`${GOPAY_BASE_URL}/payments/payment`, {
