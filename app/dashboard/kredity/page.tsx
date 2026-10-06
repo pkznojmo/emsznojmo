@@ -185,16 +185,24 @@ function KredityContent() {
       const res = await fetch(`/api/payments/gopay/status?id=${paymentId}`);
       const data = await res.json();
 
+      if (!res.ok) {
+        setErrorMessage(data.message || 'Nepodařilo se ověřit stav platby.');
+        return;
+      }
+
       if (data.state === 'PAID') {
         setSuccessMessage('Platba byla úspěšně provedena a kredity byly připsány na váš účet.');
         loadUserData();
       } else if (data.state === 'CANCELED') {
         setErrorMessage('Platba byla zrušena.');
-      } else {
+      } else if (data.state) {
         setErrorMessage(`Stav platby: ${data.state}`);
+      } else {
+        setErrorMessage('Odpověď platební brány neobsahuje stav platby. Zkuste stránku obnovit.');
       }
     } catch (err) {
       console.error('Chyba při ověřování platby:', err);
+      setErrorMessage('Nepodařilo se ověřit stav platby. Zkuste to prosím znovu.');
     }
   };
 
