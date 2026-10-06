@@ -252,7 +252,7 @@ function KredityContent() {
     return () => window.clearTimeout(timer);
   }, [returnPaymentId, verifyPaymentStatus]);
 
-  // Zahájení platby přes GoPay
+  // Zahájení platby GoPay
   const handleGoPayPayment = async () => {
     if (!profile || !selectedPackage) return;
 
