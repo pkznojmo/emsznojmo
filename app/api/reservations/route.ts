@@ -168,6 +168,12 @@ export async function POST(request: Request) {
 
     if (transactionError) {
       console.error('Chyba při zápisu stržení kreditu do historie:', transactionError);
+      const { error: rollbackError } = await supabase
+        .from('profiles')
+        .update({ credit_balance: userProfile.credit_balance })
+        .eq('id', user_id);
+      if (rollbackError) console.error('Chyba při vrácení kreditu po selhání historie:', rollbackError);
+      return NextResponse.json({ error: 'Nepodařilo se uložit pohyb kreditu. Rezervaci se nepodařilo vytvořit.' }, { status: 500 });
     }
 
     // 6. ZÁPIS REZERVACE DO DATABÁZE
@@ -232,8 +238,8 @@ export async function POST(request: Request) {
       message: 'Rezervace úspěšně vytvořena, kredit stržen a e-maily odeslány.',
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Server Error:', error);
-    return NextResponse.json({ error: error.message || 'Interní chyba serveru.' }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Interní chyba serveru.' }, { status: 500 });
   }
 }

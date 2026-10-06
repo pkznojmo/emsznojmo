@@ -1,4 +1,28 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnon = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+const supabaseAdmin = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+
+const VIP_ROLES = ['VIP', 'TRAINER', 'ADMIN', 'VIP_TRAINER', 'SWIMMER'];
+const PACKAGES = {
+  customer: {
+    single: { credits: 1, amountCZK: 790, name: '1 lekce' },
+    'pack-10': { credits: 10, amountCZK: 6990, name: '10 lekcí' },
+    'pack-20': { credits: 20, amountCZK: 12800, name: '20 lekcí' },
+  },
+  vip: {
+    single: { credits: 1, amountCZK: 500, name: '1 lekce' },
+  },
+} as const;
+
+interface GoPayCreateResponse {
+  id?: string | number;
+  gw_url?: string;
+  errors?: { message?: string }[];
+  [key: string]: unknown;
+}
 
 const GOPAY_BASE_URL = process.env.GOPAY_ENV === 'production' 
   ? 'https://gate.gopay.cz/api' 
@@ -41,12 +65,38 @@ async function getAccessToken(): Promise<string> {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { userId, userEmail, packageId, credits, amountCZK, packageName } = body;
-
-    if (!userId || !amountCZK || !credits) {
-      return NextResponse.json({ message: 'Neúplné údaje v požadavku.' }, { status: 400 });
+    const authorization = req.headers.get('authorization');
+    const bearerToken = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+    if (!bearerToken) {
+      return NextResponse.json({ message: 'Pro založení platby se přihlaste.' }, { status: 401 });
     }
+
+    const { data: authData, error: authError } = await supabaseAnon.auth.getUser(bearerToken);
+    if (authError || !authData.user) {
+      return NextResponse.json({ message: 'Přihlášení vypršelo. Znovu se přihlaste.' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const packageId = body.packageId;
+    if (typeof packageId !== 'string') {
+      return NextResponse.json({ message: 'Vybraný balíček není platný.' }, { status: 400 });
+    }
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', authData.user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return NextResponse.json({ message: 'Nepodařilo se ověřit uživatelský účet.' }, { status: 400 });
+    }
+
+    const packageSet = VIP_ROLES.includes(String(profile.role).toUpperCase()) ? PACKAGES.vip : PACKAGES.customer;
+    const selected = Object.prototype.hasOwnProperty.call(packageSet, packageId)
+      ? packageSet[packageId as keyof typeof packageSet]
+      : null;
+    if (!selected) return NextResponse.json({ message: 'Vybraný balíček není platný.' }, { status: 400 });
 
     const goid = Number(process.env.GOPAY_GOID);
     if (!goid || isNaN(goid)) {
@@ -60,28 +110,28 @@ export async function POST(req: Request) {
     const accessToken = await getAccessToken();
 
     // 2. Příprava dat platby (částka v haléřích)
-    const amountInHalers = Math.round(amountCZK * 100);
+    const amountInHalers = selected.amountCZK * 100;
 
-    const paymentData: Record<string, any> = {
+    const paymentData: Record<string, unknown> = {
       target: {
         type: 'ACCOUNT',
         goid: goid,
       },
       amount: amountInHalers,
       currency: 'CZK',
-      order_number: `CREDIT-${userId.slice(0, 8)}-${Date.now()}`,
-      order_description: packageName || `${credits} kreditů`,
+      order_number: `CREDIT-${authData.user.id.slice(0, 8)}-${Date.now()}`,
+      order_description: selected.name,
       items: [
         {
-          name: packageName || `Kreditní balíček (${credits} kreditů)`,
+          name: selected.name,
           amount: amountInHalers,
           count: 1,
         },
       ],
       // Správný název pole pro parametry v GoPay API
       additional_params: [
-        { name: 'user_id', value: String(userId) },
-        { name: 'credits', value: String(credits) },
+        { name: 'user_id', value: authData.user.id },
+        { name: 'credits', value: String(selected.credits) },
       ],
       callback: {
         return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/kredity?status=return`,
@@ -91,10 +141,10 @@ export async function POST(req: Request) {
     };
 
     // Pokud uživatel má validní e-mail, předáme jej do GoPay
-    if (userEmail && typeof userEmail === 'string' && userEmail.includes('@')) {
+    if (authData.user.email && authData.user.email.includes('@')) {
       paymentData.payer = {
         contact: {
-          email: userEmail,
+          email: authData.user.email,
         },
       };
     }
@@ -110,7 +160,13 @@ export async function POST(req: Request) {
       body: JSON.stringify(paymentData),
     });
 
-    const data = await response.json();
+    const responseText = await response.text();
+    let data: GoPayCreateResponse;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error(`GoPay vrátil neplatnou odpověď (${response.status}).`);
+    }
 
     if (!response.ok) {
       console.error('Chyba při vytváření platby GoPay:', data);
@@ -120,10 +176,14 @@ export async function POST(req: Request) {
       );
     }
 
+    if (!data.id || !data.gw_url) {
+      throw new Error('GoPay nevytvořil platbu nebo nevrátil adresu platební brány.');
+    }
+
     // Vrátí JSON s id a gw_url
     return NextResponse.json(data);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('GoPay backend chyba:', error);
-    return NextResponse.json({ message: error.message || 'Interní chyba serveru' }, { status: 500 });
+    return NextResponse.json({ message: error instanceof Error ? error.message : 'Interní chyba serveru' }, { status: 500 });
   }
 }

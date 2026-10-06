@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '../../../lib/supabase';
@@ -15,7 +15,6 @@ import {
   Coins,
   Lock,
   Sparkles,
-  Phone
 } from 'lucide-react';
 
 interface CreditPackage {
@@ -27,6 +26,22 @@ interface CreditPackage {
   badge?: string;
   savings?: string;
   popular?: boolean;
+}
+
+interface CreditTransaction {
+  id: string;
+  amount: number;
+  type: string | null;
+  description: string | null;
+  created_at: string;
+}
+
+interface GoPayCheckoutResult {
+  id?: string | number;
+}
+
+interface GoPayCheckoutApi {
+  checkout: (options: { gatewayUrl: string; inline: boolean }, callback: (result: GoPayCheckoutResult | null) => void) => void;
 }
 
 const CLIENT_PACKAGES: CreditPackage[] = [
@@ -70,6 +85,7 @@ const VIP_PACKAGES: CreditPackage[] = [
 ];
 
 const VIP_ROLES = ['VIP', 'TRAINER', 'ADMIN', 'VIP_TRAINER', 'SWIMMER'];
+const TRANSACTION_PAGE_SIZE = 50;
 
 const isVipRole = (role?: string) => {
   if (!role) return false;
@@ -84,13 +100,16 @@ function KredityContent() {
   const [profile, setProfile] = useState<{ id: string; email?: string; full_name?: string; credit_balance: number; role?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [transactions, setTransactions] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
+  const [hasMoreTransactions, setHasMoreTransactions] = useState(false);
+  const [loadingMoreTransactions, setLoadingMoreTransactions] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const isVip = isVipRole(profile?.role);
   const currentPackages = isVip ? VIP_PACKAGES : CLIENT_PACKAGES;
-  const [selectedPackage, setSelectedPackage] = useState<CreditPackage>(CLIENT_PACKAGES[1]);
+  const [selectedPackageId, setSelectedPackageId] = useState('pack-10');
+  const selectedPackage = currentPackages.find((pkg) => pkg.id === selectedPackageId) || currentPackages[0];
 
   // Načtení GoPay Javascript API (embed.js)
   useEffect(() => {
@@ -107,22 +126,7 @@ function KredityContent() {
     }
   }, []);
 
-  // Kontrola navrácení z platební brány přes GET parametr ?id=...
-  useEffect(() => {
-    const paymentId = searchParams.get('id');
-    if (paymentId) {
-      verifyPaymentStatus(paymentId);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (profile) {
-      const packages = isVipRole(profile.role) ? VIP_PACKAGES : CLIENT_PACKAGES;
-      setSelectedPackage(packages[1] || packages[0]);
-    }
-  }, [profile?.role]);
-
-  const loadUserData = async () => {
+  const loadUserData = useCallback(async () => {
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
 
@@ -157,21 +161,47 @@ function KredityContent() {
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range(0, TRANSACTION_PAGE_SIZE - 1);
 
       if (txData) {
         setTransactions(txData);
+        setHasMoreTransactions(txData.length === TRANSACTION_PAGE_SIZE);
       }
     } catch (err) {
       console.error('Chyba při načítání dat uživatele:', err);
     } finally {
       setLoading(false);
     }
+  }, [router]);
+
+  const loadOlderTransactions = async () => {
+    if (loadingMoreTransactions || !hasMoreTransactions) return;
+    setLoadingMoreTransactions(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase
+        .from('credit_transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .range(transactions.length, transactions.length + TRANSACTION_PAGE_SIZE - 1);
+      if (error) throw error;
+      const nextPage = data || [];
+      setTransactions((current) => [...current, ...nextPage]);
+      setHasMoreTransactions(nextPage.length === TRANSACTION_PAGE_SIZE);
+    } catch (error) {
+      console.error('Chyba při načítání starších pohybů kreditů:', error);
+      setErrorMessage('Nepodařilo se načíst starší pohyby kreditů. Zkuste to znovu.');
+    } finally {
+      setLoadingMoreTransactions(false);
+    }
   };
 
   useEffect(() => {
-    loadUserData();
-  }, [router]);
+    const timer = window.setTimeout(() => { void loadUserData(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadUserData]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -180,10 +210,18 @@ function KredityContent() {
   };
 
   // Ověření stavu platby na backendu
-  const verifyPaymentStatus = async (paymentId: string) => {
+  const verifyPaymentStatus = useCallback(async (paymentId: string) => {
     try {
-      const res = await fetch(`/api/payments/gopay/status?id=${paymentId}`);
-      const data = await res.json();
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session?.access_token) {
+        setErrorMessage('Přihlášení vypršelo. Znovu se přihlaste a zkontrolujte stav platby.');
+        return;
+      }
+
+      const res = await fetch(`/api/payments/gopay/status?id=${encodeURIComponent(paymentId)}`, {
+        headers: { 'Authorization': `Bearer ${sessionData.session.access_token}` },
+      });
+      const data = await res.json() as { state?: string; message?: string };
 
       if (!res.ok) {
         setErrorMessage(data.message || 'Nepodařilo se ověřit stav platby.');
@@ -204,7 +242,15 @@ function KredityContent() {
       console.error('Chyba při ověřování platby:', err);
       setErrorMessage('Nepodařilo se ověřit stav platby. Zkuste to prosím znovu.');
     }
-  };
+  }, [loadUserData]);
+
+  // Kontrola navrácení z platební brány přes GET parametr ?id=...
+  const returnPaymentId = searchParams.get('id');
+  useEffect(() => {
+    if (!returnPaymentId) return;
+    const timer = window.setTimeout(() => { void verifyPaymentStatus(returnPaymentId); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [returnPaymentId, verifyPaymentStatus]);
 
   // Zahájení platby přes GoPay
   const handleGoPayPayment = async () => {
@@ -215,18 +261,19 @@ function KredityContent() {
     setSuccessMessage(null);
 
     try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session?.access_token) {
+        throw new Error('Přihlášení vypršelo. Obnovte stránku a přihlaste se znovu.');
+      }
+
       const response = await fetch('/api/payments/gopay', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionData.session.access_token}`,
         },
         body: JSON.stringify({
-          userId: profile.id,
-          userEmail: profile.email,
           packageId: selectedPackage.id,
-          credits: selectedPackage.credits,
-          amountCZK: selectedPackage.priceCZK,
-          packageName: selectedPackage.title,
         }),
       });
 
@@ -237,25 +284,26 @@ function KredityContent() {
       }
 
       if (data.gw_url) {
-        if (typeof window !== 'undefined' && (window as any)._gopay) {
-          (window as any)._gopay.checkout(
+        const goPay = (window as Window & { _gopay?: GoPayCheckoutApi })._gopay;
+        if (goPay) {
+          goPay.checkout(
             { gatewayUrl: data.gw_url, inline: true },
-            async (checkoutResult: any) => {
+            async (checkoutResult) => {
               if (checkoutResult && checkoutResult.id) {
-                await verifyPaymentStatus(checkoutResult.id);
+                await verifyPaymentStatus(String(checkoutResult.id));
               }
               setProcessingPayment(false);
             }
           );
         } else {
-          window.location.href = data.gw_url;
+          window.location.assign(data.gw_url);
         }
       } else {
         throw new Error('Nebyla doručena URL platební brány.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Chyba při platbě GoPay:', err);
-      setErrorMessage(err.message || 'Při zakládání platby došlo k chybě. Zkuste to prosím znovu.');
+      setErrorMessage(err instanceof Error ? err.message : 'Při zakládání platby došlo k chybě. Zkuste to prosím znovu.');
       setProcessingPayment(false);
     }
   };
@@ -338,7 +386,7 @@ function KredityContent() {
               return (
                 <div
                   key={pkg.id}
-                  onClick={() => setSelectedPackage(pkg)}
+                  onClick={() => setSelectedPackageId(pkg.id)}
                   className={`relative rounded-3xl p-6 cursor-pointer transition-all duration-200 border-2 flex flex-col justify-between ${
                     isSelected
                       ? 'bg-white border-emerald-500 shadow-xl shadow-emerald-500/10 scale-[1.02]'
@@ -479,7 +527,7 @@ function KredityContent() {
                       CHARGE: 'Dobití kreditů',
                       RESERVATION: 'Rezervace tréninku',
                       RESERVATION_REFUND: 'Vrácení kreditu za zrušenou rezervaci',
-                    } as Record<string, string>)[tx.type] || 'Pohyb kreditů'}</p>
+                    } as Record<string, string>)[tx.type || ''] || 'Pohyb kreditů'}</p>
                     <p className="text-xs text-slate-400">
                       {new Date(tx.created_at).toLocaleDateString('cs-CZ', {
                         day: 'numeric',
@@ -498,6 +546,16 @@ function KredityContent() {
                 </div>
               ))}
             </div>
+          )}
+          {hasMoreTransactions && (
+            <button
+              type="button"
+              onClick={loadOlderTransactions}
+              disabled={loadingMoreTransactions}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {loadingMoreTransactions ? 'Načítám…' : 'Načíst starší pohyby'}
+            </button>
           )}
         </div>
 

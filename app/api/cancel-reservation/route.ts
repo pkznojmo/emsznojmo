@@ -244,7 +244,7 @@ export async function POST(request: Request) {
       .insert({
         user_id,
         amount: 1,
-        type: 'RESERVATION_REFUND',
+        type: 'RESERVATION',
         description:
           `Vrácení kreditu - zrušení rezervace (${reservation.date} v ${cleanTime})`,
       });
@@ -253,6 +253,17 @@ export async function POST(request: Request) {
       console.error(
         'Transaction error:',
         transactionError
+      );
+      const { error: creditRollbackError } = await supabase
+        .from('profiles')
+        .update({ credit_balance: currentCredits })
+        .eq('id', user_id);
+      if (creditRollbackError) {
+        console.error('Credit rollback after failed history insert failed:', creditRollbackError);
+      }
+      return NextResponse.json(
+        { error: 'Nepodařilo se uložit vrácení kreditu do historie. Rezervace nebyla zrušena.' },
+        { status: 500 }
       );
     }
 
@@ -338,7 +349,7 @@ export async function POST(request: Request) {
           trainerEmails.length,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(
       'Server Cancel Error:',
       error
@@ -347,7 +358,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          error?.message ||
+          (error instanceof Error ? error.message : null) ||
           'Interní chyba serveru.',
       },
       { status: 500 }

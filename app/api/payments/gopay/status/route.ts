@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { processCreditPayment } from '../notify/route';
+import { createClient } from '@supabase/supabase-js';
+import { processCreditPayment, type GoPayPaymentDetails } from '@/lib/gopay-credit';
+
+const supabaseAnon = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 const GOPAY_BASE_URL = process.env.GOPAY_ENV === 'production' 
   ? 'https://gate.gopay.cz/api' 
@@ -38,6 +44,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ message: 'Chybí ID platby' }, { status: 400 });
   }
 
+  const bearerToken = req.headers.get('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!bearerToken) {
+    return NextResponse.json({ message: 'Pro ověření platby se přihlaste.' }, { status: 401 });
+  }
+
+  const { data: authData, error: authError } = await supabaseAnon.auth.getUser(bearerToken);
+  if (authError || !authData.user) {
+    return NextResponse.json({ message: 'Přihlášení vypršelo. Znovu se přihlaste.' }, { status: 401 });
+  }
+
   try {
     const accessToken = await getAccessToken();
     const res = await fetch(`${GOPAY_BASE_URL}/payments/payment/${encodeURIComponent(paymentId)}`, {
@@ -48,7 +64,7 @@ export async function GET(req: Request) {
     });
 
     const responseText = await res.text();
-    let paymentDetails: any;
+    let paymentDetails: GoPayPaymentDetails & { message?: string; errors?: { message?: string }[] };
     try {
       paymentDetails = JSON.parse(responseText);
     } catch {
@@ -65,11 +81,19 @@ export async function GET(req: Request) {
       throw new Error('GoPay odpověď neobsahuje stav platby.');
     }
 
+    const params = paymentDetails.additional_params || paymentDetails.custom_params;
+    const paymentUserId = Array.isArray(params)
+      ? params.find((param) => param.name === 'user_id')?.value
+      : undefined;
+    if (paymentUserId !== authData.user.id) {
+      return NextResponse.json({ message: 'Platba nebyla nalezena.' }, { status: 404 });
+    }
+
     if (paymentDetails.state === 'PAID') {
       await processCreditPayment(paymentDetails);
     }
 
-    return NextResponse.json(paymentDetails);
+    return NextResponse.json({ state: paymentDetails.state });
   } catch (error) {
     console.error('Chyba při ověřování GoPay platby:', error);
     return NextResponse.json(
