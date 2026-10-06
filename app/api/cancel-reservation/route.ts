@@ -244,6 +244,7 @@ export async function POST(request: Request) {
       .insert({
         user_id,
         amount: 1,
+        type: 'RESERVATION_REFUND',
         description:
           `Vrácení kreditu - zrušení rezervace (${reservation.date} v ${cleanTime})`,
       });

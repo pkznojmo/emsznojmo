@@ -46,55 +46,16 @@ export async function processCreditPayment(paymentDetails: any) {
   const creditsToAdd = parseInt(creditsStr, 10);
   if (isNaN(creditsToAdd) || creditsToAdd <= 0) return;
 
-  const descriptionText = `Dobití kreditů přes GoPay (ID: ${paymentId})`;
+  const { error } = await supabaseAdmin.rpc('apply_gopay_credit_payment', {
+    p_payment_id: paymentId,
+    p_user_id: userId,
+    p_credits: creditsToAdd,
+  });
 
-  // 1. Idempotence: Zkontrolujeme, zda transakce s tímto ID platby už neexistuje
-  const { data: existingTx } = await supabaseAdmin
-    .from('credit_transactions')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('description', descriptionText)
-    .maybeSingle();
-
-  if (existingTx) {
-    // Platba již byla dříve úspěšně zpracována
-    return;
+  if (error) {
+    console.error('Chyba při atomickém zpracování GoPay platby:', error);
+    throw error;
   }
-
-  // 2. Načtení aktuálního profilu
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from('profiles')
-    .select('credit_balance')
-    .eq('id', userId)
-    .single();
-
-  if (profileError || !profile) {
-    console.error('Uživatel nebyl v Supabase nalezen:', profileError);
-    return;
-  }
-
-  const newBalance = (profile.credit_balance || 0) + creditsToAdd;
-
-  // 3. Aktualizace zůstatku v profiles
-  const { error: updateError } = await supabaseAdmin
-    .from('profiles')
-    .update({ credit_balance: newBalance })
-    .eq('id', userId);
-
-  if (updateError) {
-    console.error('Chyba při aktualizaci zůstatku kreditů:', updateError);
-    return;
-  }
-
-  // 4. Záznam do kreditních transakcí
-  await supabaseAdmin
-    .from('credit_transactions')
-    .insert({
-      user_id: userId,
-      amount: creditsToAdd,
-      type: 'CHARGE',
-      description: descriptionText,
-    });
 }
 
 export async function GET(req: Request) {

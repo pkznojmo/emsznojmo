@@ -157,7 +157,7 @@ function KredityContent() {
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(50);
 
       if (txData) {
         setTransactions(txData);
@@ -467,7 +467,11 @@ function KredityContent() {
               {transactions.map((tx) => (
                 <div key={tx.id} className="py-3 flex items-center justify-between text-sm">
                   <div>
-                    <p className="font-medium text-slate-900">{tx.description || 'Nákup kreditů'}</p>
+                    <p className="font-medium text-slate-900">{tx.description || ({
+                      CHARGE: 'Dobití kreditů',
+                      RESERVATION: 'Rezervace tréninku',
+                      RESERVATION_REFUND: 'Vrácení kreditu za zrušenou rezervaci',
+                    } as Record<string, string>)[tx.type] || 'Pohyb kreditů'}</p>
                     <p className="text-xs text-slate-400">
                       {new Date(tx.created_at).toLocaleDateString('cs-CZ', {
                         day: 'numeric',

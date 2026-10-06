@@ -159,11 +159,16 @@ export async function POST(request: Request) {
     }
 
     // Záznam do historie kreditů (pokud tabulka existuje)
-    await supabase.from('credit_transactions').insert({
+    const { data: creditTransaction, error: transactionError } = await supabase.from('credit_transactions').insert({
       user_id: user_id,
       amount: -1,
+      type: 'RESERVATION',
       description: `Rezervace tréninku (${date} v ${cleanTime})`,
-    });
+    }).select('id').maybeSingle();
+
+    if (transactionError) {
+      console.error('Chyba při zápisu stržení kreditu do historie:', transactionError);
+    }
 
     // 6. ZÁPIS REZERVACE DO DATABÁZE
     const { data: reservation, error: dbError } = await supabase
@@ -188,6 +193,13 @@ export async function POST(request: Request) {
         .from('profiles')
         .update({ credit_balance: userProfile.credit_balance })
         .eq('id', user_id);
+
+      if (!transactionError) {
+        await supabase
+          .from('credit_transactions')
+          .delete()
+          .eq('id', creditTransaction?.id);
+      }
 
       return NextResponse.json({ error: 'Chyba při ukládání rezervace do databáze.' }, { status: 500 });
     }
