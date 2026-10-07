@@ -16,7 +16,8 @@ import {
   MoreHorizontal,
   UserCog,
   LucideIcon,
-  Coins
+  Coins,
+  Shirt
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '../../lib/supabase';
@@ -47,6 +48,7 @@ const TRAINER_LINKS: NavLinkItem[] = [
 
 const ADMIN_LINKS: NavLinkItem[] = [
   { href: "/dashboard/sprava-uzivatelu", label: "Správa uživatelů", icon: UserCog },
+  { href: "/dashboard/sprava-obleceni", label: "EMS oblečení", icon: Shirt },
 ];
 
 export default function Sidebar({ onLogout }: SidebarProps) {

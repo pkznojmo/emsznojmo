@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { processCreditPayment, type GoPayPaymentDetails } from '@/lib/gopay-credit';
+import { isClothingPayment, processClothingPayment, type GoPayClothingPaymentDetails } from '@/lib/gopay-clothing';
+import { getSupabaseAdmin } from '@/lib/clothing-store';
 
 const supabaseAnon = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -89,11 +91,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ message: 'Platba nebyla nalezena.' }, { status: 404 });
     }
 
+    const clothingPayment = await isClothingPayment(paymentDetails as GoPayClothingPaymentDetails);
     if (paymentDetails.state === 'PAID') {
-      await processCreditPayment(paymentDetails);
+      if (clothingPayment) await processClothingPayment(paymentDetails as GoPayClothingPaymentDetails);
+      else await processCreditPayment(paymentDetails);
+    } else if (clothingPayment && ['CANCELED', 'TIMEOUTED', 'FAILED'].includes(paymentDetails.state)) {
+      const params = paymentDetails.additional_params || paymentDetails.custom_params || [];
+      const orderId = params.find((param) => param.name === 'order_id')?.value;
+      if (orderId) {
+        const adminDb = getSupabaseAdmin();
+        const { data: cancelledOrder } = await adminDb.from('ems_clothing_orders').update({ status: 'CANCELLED', updated_at: new Date().toISOString() })
+          .eq('id', orderId).eq('user_id', authData.user.id).eq('status', 'PENDING_PAYMENT').select('size, quantity').maybeSingle();
+        if (cancelledOrder) await adminDb.rpc('release_ems_clothing_stock', { target_size: cancelledOrder.size, amount_to_release: cancelledOrder.quantity });
+      }
     }
 
-    return NextResponse.json({ state: paymentDetails.state });
+    return NextResponse.json({ state: paymentDetails.state, productType: clothingPayment ? 'ems_clothing' : 'credits' });
   } catch (error) {
     console.error('Chyba při ověřování GoPay platby:', error);
     return NextResponse.json(

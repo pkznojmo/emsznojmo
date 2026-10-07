@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/clothing-store';
+import { Resend } from 'resend';
+import { escapeEmailHtml } from '@/lib/clothing-store';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnon = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
@@ -16,6 +19,8 @@ const PACKAGES = {
     single: { credits: 1, amountCZK: 500, name: '1 lekce' },
   },
 } as const;
+const CLOTHING_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+const CLOTHING_PRICE_CZK = 990;
 
 interface GoPayCreateResponse {
   id?: string | number;
@@ -78,6 +83,65 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const packageId = body.packageId;
+    const productType = body.productType === 'ems_clothing' ? 'ems_clothing' : 'credits';
+    if (productType === 'ems_clothing') {
+      const size = String(body.size || '').toUpperCase();
+      if (!CLOTHING_SIZES.includes(size)) return NextResponse.json({ message: 'Vyberte platnou velikost oblečení.' }, { status: 400 });
+      const db = getSupabaseAdmin();
+      const [{ data: profile, error: profileError }, { data: inventory, error: inventoryError }] = await Promise.all([
+        db.from('profiles').select('first_name, last_name, email').eq('id', authData.user.id).single(),
+        db.from('ems_clothing_inventory').select('stock').eq('size', size).single(),
+      ]);
+      if (profileError || !profile) return NextResponse.json({ message: 'Nepodařilo se ověřit uživatelský účet.' }, { status: 400 });
+      if (inventoryError) throw inventoryError;
+      if (inventory.stock < 1) return NextResponse.json({ message: `Velikost ${size} je momentálně vyprodaná.` }, { status: 409 });
+      const userEmail = profile.email || authData.user.email;
+      if (!userEmail) return NextResponse.json({ message: 'U účtu chybí e-mailová adresa.' }, { status: 400 });
+      const { data: stockReservation, error: stockError } = await db.rpc('reserve_ems_clothing_stock', { target_size: size, amount_to_reserve: 1 });
+      if (stockError) throw stockError;
+      if (!stockReservation?.length) return NextResponse.json({ message: `Velikost ${size} už mezitím někdo objednal. Obnovte stránku.` }, { status: 409 });
+      const customerName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Klient';
+      const { data: order, error: orderError } = await db.from('ems_clothing_orders').insert({
+        user_id: authData.user.id, customer_name: customerName, customer_email: userEmail,
+        size, quantity: 1, unit_price: CLOTHING_PRICE_CZK, status: 'PENDING_PAYMENT',
+      }).select('id').single();
+      if (orderError) {
+        await db.rpc('release_ems_clothing_stock', { target_size: size, amount_to_release: 1 });
+        throw orderError;
+      }
+      const selected = { credits: 0, amountCZK: CLOTHING_PRICE_CZK, name: `EMS oblečení – velikost ${size}` };
+      let payment: GoPayCreateResponse;
+      try {
+        payment = await createGoPayPayment({ userId: authData.user.id, email: userEmail, selected, orderType: 'ems_clothing', orderId: order.id, size });
+      } catch (error) {
+        await db.from('ems_clothing_orders').update({ status: 'CANCELLED', updated_at: new Date().toISOString() }).eq('id', order.id);
+        await db.rpc('release_ems_clothing_stock', { target_size: size, amount_to_release: 1 });
+        throw error;
+      }
+      const { error: updateError } = await db.from('ems_clothing_orders').update({ gopay_payment_id: String(payment.id) }).eq('id', order.id);
+      if (updateError) {
+        await db.from('ems_clothing_orders').update({ status: 'CANCELLED', updated_at: new Date().toISOString() }).eq('id', order.id);
+        await db.rpc('release_ems_clothing_stock', { target_size: size, amount_to_release: 1 });
+        throw updateError;
+      }
+
+      const adminEmails = Array.from(new Set((process.env.EMS_STORE_ADMIN_EMAILS || '').split(',').map((email) => email.trim())
+        .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))));
+      if (adminEmails.length && process.env.RESEND_API_KEY) {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        const result = await resend.emails.send({
+          from: 'EMS Znojmo <registrace@emsznojmo.cz>',
+          to: adminEmails,
+          subject: 'Nová objednávka EMS oblečení – čeká na platbu',
+          html: `<p>Byla vytvořena nová objednávka EMS oblečení a čeká na platbu přes GoPay.</p><p>Klient: <strong>${escapeEmailHtml(customerName)}</strong><br>E-mail: ${escapeEmailHtml(userEmail)}<br>Velikost: ${size}<br>Částka: ${CLOTHING_PRICE_CZK.toLocaleString('cs-CZ')} Kč<br>Objednávka: ${escapeEmailHtml(order.id)}</p>`,
+        });
+        if (result.error) console.error('Oznámení adminům o nové objednávce nešlo odeslat:', result.error);
+      } else {
+        console.error('Oznámení adminům o objednávce neodesláno: chybí EMS_STORE_ADMIN_EMAILS nebo RESEND_API_KEY.', { orderId: order.id });
+      }
+      return NextResponse.json(payment);
+    }
+
     if (typeof packageId !== 'string') {
       return NextResponse.json({ message: 'Vybraný balíček není platný.' }, { status: 400 });
     }
@@ -98,12 +162,25 @@ export async function POST(req: Request) {
       : null;
     if (!selected) return NextResponse.json({ message: 'Vybraný balíček není platný.' }, { status: 400 });
 
+    const payment = await createGoPayPayment({ userId: authData.user.id, email: authData.user.email || undefined, selected, orderType: 'credits' });
+    return NextResponse.json(payment);
+  } catch (error: unknown) {
+    console.error('GoPay backend chyba:', error);
+    return NextResponse.json({ message: error instanceof Error ? error.message : 'Interní chyba serveru' }, { status: 500 });
+  }
+}
+
+async function createGoPayPayment({ userId, email, selected, orderType, orderId, size }: {
+  userId: string;
+  email?: string;
+  selected: { credits: number; amountCZK: number; name: string };
+  orderType: 'credits' | 'ems_clothing';
+  orderId?: string;
+  size?: string;
+}) {
     const goid = Number(process.env.GOPAY_GOID);
     if (!goid || isNaN(goid)) {
-      return NextResponse.json(
-        { message: 'Chybí nebo je neplatné GOPAY_GOID v nastavení serveru.' }, 
-        { status: 500 }
-      );
+      throw new Error('Chybí nebo je neplatné GOPAY_GOID v nastavení serveru.');
     }
 
     // 1. Získání OAuth tokenu
@@ -119,7 +196,7 @@ export async function POST(req: Request) {
       },
       amount: amountInHalers,
       currency: 'CZK',
-      order_number: `CREDIT-${authData.user.id.slice(0, 8)}-${Date.now()}`,
+      order_number: `${orderType === 'credits' ? 'CREDIT' : 'CLOTH'}-${userId.slice(0, 8)}-${Date.now()}`,
       order_description: selected.name,
       items: [
         {
@@ -130,21 +207,24 @@ export async function POST(req: Request) {
       ],
       // Správný název pole pro parametry v GoPay API
       additional_params: [
-        { name: 'user_id', value: authData.user.id },
-        { name: 'credits', value: String(selected.credits) },
+        { name: 'user_id', value: userId },
+        { name: 'order_type', value: orderType },
+        ...(orderType === 'credits' ? [{ name: 'credits', value: String(selected.credits) }] : []),
+        ...(orderId ? [{ name: 'order_id', value: orderId }] : []),
+        ...(size ? [{ name: 'size', value: size }] : []),
       ],
       callback: {
-        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/kredity?status=return`,
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/kredity?status=return&product=${orderType}${orderId ? `&order=${encodeURIComponent(orderId)}` : ''}`,
         notification_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/payments/gopay/notify`,
       },
       lang: 'CS',
     };
 
     // Pokud uživatel má validní e-mail, předáme jej do GoPay
-    if (authData.user.email && authData.user.email.includes('@')) {
+    if (email && email.includes('@')) {
       paymentData.payer = {
         contact: {
-          email: authData.user.email,
+          email,
         },
       };
     }
@@ -170,10 +250,7 @@ export async function POST(req: Request) {
 
     if (!response.ok) {
       console.error('Chyba při vytváření platby GoPay:', data);
-      return NextResponse.json(
-        { message: data.errors?.[0]?.message || 'Nepodařilo se založit platbu u GoPay.' }, 
-        { status: response.status }
-      );
+      throw new Error(data.errors?.[0]?.message || `Nepodařilo se založit platbu u GoPay (${response.status}).`);
     }
 
     if (!data.id || !data.gw_url) {
@@ -181,9 +258,5 @@ export async function POST(req: Request) {
     }
 
     // Vrátí JSON s id a gw_url
-    return NextResponse.json(data);
-  } catch (error: unknown) {
-    console.error('GoPay backend chyba:', error);
-    return NextResponse.json({ message: error instanceof Error ? error.message : 'Interní chyba serveru' }, { status: 500 });
-  }
+    return data;
 }

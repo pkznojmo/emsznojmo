@@ -15,6 +15,7 @@ export default function Topbar() {
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<{ first_name: string; last_name: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   useEffect(() => {
     if (isMobileMenuOpen) {
@@ -86,14 +87,19 @@ export default function Topbar() {
             {/* 1. Levá část - LOGO */}
             <div className="flex items-center justify-start">
               <Link href="/" className="flex items-center shrink-0">
-                <Image 
-                  src="/logo.svg" 
-                  alt="EMSExpress Logo"
-                  width={150}               
-                  height={50}               
-                  className="h-9 sm:h-10 md:h-16 w-auto object-contain" 
-                  priority                  
-                />
+                {logoFailed ? (
+                  <span className="text-lg font-black tracking-tight text-slate-800 sm:text-xl">EMS<span className="text-emerald-600">EXPRESS</span></span>
+                ) : (
+                  <Image
+                    src="/logo.svg"
+                    alt="EMSExpress Logo"
+                    width={150}
+                    height={41}
+                    className="h-9 sm:h-10 md:h-16 w-auto object-contain"
+                    priority
+                    onError={() => setLogoFailed(true)}
+                  />
+                )}
               </Link>
             </div>
 

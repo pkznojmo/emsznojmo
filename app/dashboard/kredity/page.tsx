@@ -9,12 +9,14 @@ import {
   CreditCard, 
   CheckCircle2, 
   Check, 
-  ShieldCheck, 
   AlertCircle, 
   History,
   Coins,
   Lock,
   Sparkles,
+  Shirt,
+  ArrowRight,
+  ShieldCheck as ShieldIcon,
 } from 'lucide-react';
 
 interface CreditPackage {
@@ -42,6 +44,15 @@ interface GoPayCheckoutResult {
 
 interface GoPayCheckoutApi {
   checkout: (options: { gatewayUrl: string; inline: boolean }, callback: (result: GoPayCheckoutResult | null) => void) => void;
+}
+
+interface ClothingOrder {
+  id: string;
+  quantity: number;
+  status: string;
+  size: string;
+  gopay_payment_id?: string | null;
+  created_at: string;
 }
 
 const CLIENT_PACKAGES: CreditPackage[] = [
@@ -105,6 +116,11 @@ function KredityContent() {
   const [loadingMoreTransactions, setLoadingMoreTransactions] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [clothingOrders, setClothingOrders] = useState<ClothingOrder[]>([]);
+  const [clothingInventory, setClothingInventory] = useState<{ size: string; stock: number }[]>([]);
+  const [selectedClothingSize, setSelectedClothingSize] = useState('M');
+  const [orderingClothing, setOrderingClothing] = useState(false);
+  const [activeProduct, setActiveProduct] = useState<'credits' | 'clothing'>('credits');
 
   const isVip = isVipRole(profile?.role);
   const currentPackages = isVip ? VIP_PACKAGES : CLIENT_PACKAGES;
@@ -167,6 +183,18 @@ function KredityContent() {
         setTransactions(txData);
         setHasMoreTransactions(txData.length === TRANSACTION_PAGE_SIZE);
       }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData.session?.access_token) {
+        const orderResponse = await fetch('/api/clothing-orders', {
+          headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+        });
+        const orderData = await orderResponse.json() as { orders?: ClothingOrder[]; inventory?: { size: string; stock: number }[] };
+        if (orderResponse.ok) {
+          setClothingOrders(orderData.orders || []);
+          setClothingInventory(orderData.inventory || []);
+        }
+      }
     } catch (err) {
       console.error('Chyba při načítání dat uživatele:', err);
     } finally {
@@ -221,7 +249,7 @@ function KredityContent() {
       const res = await fetch(`/api/payments/gopay/status?id=${encodeURIComponent(paymentId)}`, {
         headers: { 'Authorization': `Bearer ${sessionData.session.access_token}` },
       });
-      const data = await res.json() as { state?: string; message?: string };
+      const data = await res.json() as { state?: string; message?: string; productType?: string };
 
       if (!res.ok) {
         setErrorMessage(data.message || 'Nepodařilo se ověřit stav platby.');
@@ -229,7 +257,9 @@ function KredityContent() {
       }
 
       if (data.state === 'PAID') {
-        setSuccessMessage('Platba byla úspěšně provedena a kredity byly připsány na váš účet.');
+        setSuccessMessage(data.productType === 'ems_clothing'
+          ? 'Platba za EMS oblečení proběhla. Potvrzení jsme poslali e-mailem a objednávku si vyzvednete na další lekci EMS.'
+          : 'Platba byla úspěšně provedena a kredity byly připsány na váš účet.');
         loadUserData();
       } else if (data.state === 'CANCELED') {
         setErrorMessage('Platba byla zrušena.');
@@ -272,9 +302,7 @@ function KredityContent() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sessionData.session.access_token}`,
         },
-        body: JSON.stringify({
-          packageId: selectedPackage.id,
-        }),
+        body: JSON.stringify({ packageId: selectedPackage.id }),
       });
 
       const data = await response.json();
@@ -308,6 +336,37 @@ function KredityContent() {
     }
   };
 
+  const handleOrderClothing = async () => {
+    setOrderingClothing(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const { data: sessionData, error } = await supabase.auth.getSession();
+      if (error || !sessionData.session?.access_token) throw new Error('Přihlášení vypršelo. Přihlaste se znovu.');
+      const response = await fetch('/api/payments/gopay', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${sessionData.session.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productType: 'ems_clothing', size: selectedClothingSize }),
+      });
+      const data = await response.json() as { message?: string; id?: string | number; gw_url?: string };
+      if (!response.ok || !data.gw_url) throw new Error(data.message || 'Nepodařilo se vytvořit platbu za oblečení.');
+      const goPay = (window as Window & { _gopay?: GoPayCheckoutApi })._gopay;
+      if (goPay) {
+        goPay.checkout({ gatewayUrl: data.gw_url, inline: true }, async (checkoutResult) => {
+          if (checkoutResult?.id) await verifyPaymentStatus(String(checkoutResult.id));
+          setOrderingClothing(false);
+          void loadUserData();
+        });
+      } else {
+        window.location.assign(data.gw_url);
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Objednávku se nepodařilo vytvořit.');
+    } finally {
+      setOrderingClothing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-gray-500 font-medium text-sm">
@@ -322,24 +381,24 @@ function KredityContent() {
       <Sidebar onLogout={handleLogout} />
 
       <main className="flex-1 p-4 md:p-8 lg:p-10 max-w-5xl mx-auto overflow-y-auto w-full space-y-8 pb-24 md:pb-12">
-        
+
         {/* Hlavička & Stav kreditů */}
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
-          <div className="absolute -right-10 -bottom-10 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+          <div className="absolute -right-10 -bottom-10 w-56 h-56 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
           
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative z-10">
             <div>
               <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm mb-2">
-                <Coins className="w-4 h-4" /> Dobíjení kreditů 
+                <Coins className="w-4 h-4" /> EMS ZNOJMO · OBCHOD
                 {isVip && (
                   <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2.5 py-0.5 rounded-full border border-emerald-500/30 font-bold flex items-center gap-1">
                     <Sparkles className="w-3 h-3" /> Zvýhodněné ceníky ({profile?.role})
                   </span>
                 )}
               </div>
-              <h1 className="text-2xl sm:text-3xl font-bold">Nákup kreditních balíčků</h1>
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tight">Vybavení pro váš trénink</h1>
               <p className="text-slate-400 text-sm mt-1">
-                Kredity slouží k okamžité rezervaci lekcí a tréninků. Platba probíhá online přes platební bránu GoPay.
+                Vyberte si kreditní balíček nebo EMS oblečení. Bezpečnou platbu dokončíte přes GoPay.
               </p>
             </div>
 
@@ -370,16 +429,23 @@ function KredityContent() {
           </div>
         )}
 
+        <div className="mb-5 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="tablist" aria-label="Typ nákupu">
+          <button type="button" role="tab" aria-selected={activeProduct === 'credits'} onClick={() => setActiveProduct('credits')} className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${activeProduct === 'credits' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>Kreditní balíčky</button>
+          <button type="button" role="tab" aria-selected={activeProduct === 'clothing'} onClick={() => setActiveProduct('clothing')} className={`rounded-lg px-4 py-2.5 text-sm font-bold transition ${activeProduct === 'clothing' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>EMS oblečení</button>
+        </div>
+
+        <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
+        <div className="space-y-8">
         {/* 1. Výběr balíčku */}
-        <div className="space-y-4">
+        {activeProduct === 'credits' && <section className="space-y-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              1. Vyberte si balíček lekcí
+              <Coins className="h-5 w-5 text-emerald-600" /> Kreditní balíčky
             </h2>
-            <span className="text-xs text-slate-500 font-medium">1 kredit = 1 lekce</span>
+            <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500 sm:inline-flex">1 kredit = 1 lekce</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className={`grid grid-cols-1 gap-4 ${currentPackages.length === 1 ? 'md:grid-cols-1' : 'md:grid-cols-2 2xl:grid-cols-3'}`}>
             {currentPackages.map((pkg) => {
               const isSelected = selectedPackage?.id === pkg.id;
 
@@ -387,10 +453,13 @@ function KredityContent() {
                 <div
                   key={pkg.id}
                   onClick={() => setSelectedPackageId(pkg.id)}
-                  className={`relative rounded-3xl p-6 cursor-pointer transition-all duration-200 border-2 flex flex-col justify-between ${
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') setSelectedPackageId(pkg.id); }}
+                  className={`relative rounded-2xl p-5 cursor-pointer transition-all duration-200 border flex flex-col justify-between ${
                     isSelected
-                      ? 'bg-white border-emerald-500 shadow-xl shadow-emerald-500/10 scale-[1.02]'
-                      : 'bg-white border-slate-200 hover:border-slate-300 shadow-sm'
+                      ? 'bg-emerald-50/50 border-emerald-500 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500'
+                      : 'bg-white border-slate-200 hover:border-emerald-300 hover:shadow-md'
                   }`}
                 >
                   {pkg.badge && (
@@ -438,76 +507,63 @@ function KredityContent() {
               );
             })}
           </div>
-        </div>
+        </section>}
 
-        {/* 2. Platba přes GoPay */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                2. Zaplatit online přes bránu GoPay
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Rychlá a bezpečná platba kartou, Apple Pay, Google Pay nebo online bankovním převodem.
-              </p>
-            </div>
-            
-            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl self-start sm:self-auto">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span className="text-xs font-bold text-slate-700">Zabezpečeno GoPay</span>
-            </div>
-          </div>
 
-          <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
-            <div className="space-y-1 text-center sm:text-left">
-              <span className="text-xs text-slate-500 font-medium uppercase tracking-wider block">Shrnutí objednávky</span>
-              <div className="text-lg font-bold text-slate-900">
-                {selectedPackage?.title} ({selectedPackage?.credits} kreditů)
-              </div>
-              <div className="text-2xl font-black text-emerald-600">
-                {selectedPackage?.priceCZK.toLocaleString('cs-CZ')} Kč
+
+        {activeProduct === 'clothing' && <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-700"><Shirt size={25} /></div>
+              <div>
+                <span className="mb-1 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">EMS kolekce</span>
+                <h2 className="text-xl font-bold text-slate-900">Tréninkové oblečení</h2>
+                <p className="mt-1 text-sm text-slate-600">Objednejte si oblečení za 990 Kč. Vyzvednutí proběhne na další lekci EMS.</p>
+                <p className="mt-2 text-xs font-semibold text-slate-500">Skladem ve velikosti {selectedClothingSize}: {clothingInventory.find((item) => item.size === selectedClothingSize)?.stock ?? 0} ks</p>
               </div>
             </div>
-
-            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-              <button
-                onClick={handleGoPayPayment}
-                disabled={processingPayment || !selectedPackage}
-                className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold px-8 py-4 rounded-xl transition shadow-lg shadow-emerald-600/20 disabled:opacity-50 inline-flex items-center justify-center gap-3 w-full sm:w-auto text-base cursor-pointer"
-              >
-                {processingPayment ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Přesměrovávám na GoPay...
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-5 h-5" /> Zaplatit {selectedPackage?.priceCZK.toLocaleString('cs-CZ')} Kč
-                  </>
-                )}
+            <div className="w-full sm:max-w-[340px]">
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-600">Vyberte velikost</p>
+              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Velikost EMS oblečení">
+                {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map((size) => {
+                  const available = clothingInventory.find((item) => item.size === size)?.stock ?? 0;
+                  const selected = selectedClothingSize === size;
+                  return <button key={size} type="button" disabled={available < 1} aria-pressed={selected} onClick={() => setSelectedClothingSize(size)} className={`relative rounded-xl border px-3 py-2.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ${selected ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-sm ring-1 ring-emerald-600' : 'border-slate-200 bg-white text-slate-800 hover:border-emerald-300 hover:bg-emerald-50/50'} disabled:cursor-not-allowed disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300 disabled:hover:border-slate-100 disabled:hover:bg-slate-50`}>
+                    <span className="block text-sm font-extrabold">{size}</span>
+                    <span className={`mt-0.5 block text-[10px] font-semibold ${available > 0 ? selected ? 'text-emerald-700' : 'text-slate-400' : 'text-slate-300'}`}>{available > 0 ? `${available} ks skladem` : 'Vyprodáno'}</span>
+                    {selected && <Check className="absolute right-2 top-2 h-3.5 w-3.5 text-emerald-600" />}
+                  </button>;
+                })}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">Vybraná velikost: <strong className="text-slate-700">{selectedClothingSize}</strong></p>
+              <button type="button" onClick={handleOrderClothing} disabled={orderingClothing || (clothingInventory.find((item) => item.size === selectedClothingSize)?.stock ?? 0) < 1} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+                {orderingClothing ? 'Připravuji platbu…' : (clothingInventory.find((item) => item.size === selectedClothingSize)?.stock ?? 0) < 1 ? 'Velikost vyprodána' : <>Do košíku · 990 Kč <ArrowRight size={16} /></>}
               </button>
             </div>
           </div>
+          {clothingOrders.length > 0 && <div className="mt-6 border-t border-slate-100 pt-4">
+            <h3 className="mb-2 text-sm font-bold text-slate-800">Vaše objednávky oblečení</h3>
+            <div className="divide-y divide-slate-100">{clothingOrders.map((order) => <div key={order.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+              <span className="text-slate-600">{new Date(order.created_at).toLocaleDateString('cs-CZ')} · velikost {order.size} · 990 Kč</span>
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">{{ NEW: 'Nová', IN_PROCESS: 'Zpracovává se', READY: 'Připravená k vyzvednutí', COMPLETED: 'Dokončená', CANCELLED: 'Zrušená' }[order.status] || order.status}</span>
+            </div>)}</div>
+          </div>}
+        </section>}
+        </div>
 
-          <div className="pt-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-3 text-center sm:text-left">
-              Podporované způsoby platby
-            </span>
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
-              <div className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-600 border border-slate-200">
-                💳 Platba kartou (Visa / Mastercard)
-              </div>
-              <div className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-600 border border-slate-200">
-                🍏 Apple Pay
-              </div>
-              <div className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-600 border border-slate-200">
-                G Pay (Google Pay)
-              </div>
-              <div className="px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-bold text-slate-600 border border-slate-200">
-                🏦 Rychlý bankovní převod
-              </div>
+        <aside className="space-y-4 xl:sticky xl:top-6">
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <h2 className="text-lg font-extrabold text-slate-900">Souhrn objednávky</h2>
+            <p className="mt-1 text-xs text-slate-500">Vybraný produkt</p>
+            <div className="my-5 space-y-4 border-y border-slate-100 py-4">
+              {activeProduct === 'credits' ? <div className="flex items-start justify-between gap-3 text-sm"><div><p className="font-bold text-slate-800">{selectedPackage?.title}</p><p className="mt-0.5 text-xs text-slate-500">{selectedPackage?.credits} {selectedPackage?.credits === 1 ? 'kredit' : 'kreditů'}</p></div><span className="font-bold text-slate-800">{selectedPackage?.priceCZK.toLocaleString('cs-CZ')} Kč</span></div> : <div className="flex items-start justify-between gap-3 text-sm"><div><p className="font-bold text-slate-800">EMS oblečení</p><p className="mt-0.5 text-xs text-slate-500">Velikost {selectedClothingSize} · 1 ks</p></div><span className="font-bold text-slate-800">990 Kč</span></div>}
             </div>
-          </div>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 text-xs text-slate-500"><span>Platba zabezpečena GoPay</span><ShieldIcon size={15} className="text-emerald-600" /></div>
+            <div className="flex items-end justify-between py-4"><span className="text-sm font-bold text-slate-700">Celkem</span><span className="text-2xl font-black text-slate-900">{activeProduct === 'credits' ? selectedPackage?.priceCZK.toLocaleString('cs-CZ') : '990'} Kč</span></div>
+            {activeProduct === 'credits' ? <button onClick={handleGoPayPayment} disabled={processingPayment || !selectedPackage} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-4 text-sm font-extrabold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:opacity-50">{processingPayment ? 'Přesměrovávám na GoPay…' : <><Lock size={17} />Zaplatit přes GoPay</>}</button> : <button onClick={handleOrderClothing} disabled={orderingClothing || (clothingInventory.find((item) => item.size === selectedClothingSize)?.stock ?? 0) < 1} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-4 text-sm font-extrabold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-700 disabled:opacity-50">{orderingClothing ? 'Připravuji platbu…' : <><Lock size={17} />Zaplatit přes GoPay</>}</button>}
+            {activeProduct === 'clothing' && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">EMS oblečení si vyzvednete na další lekci. Po zaplacení vám přijde potvrzení e-mailem.</p>}
+          </section>
+        </aside>
         </div>
 
         {/* Historie kreditů */}
