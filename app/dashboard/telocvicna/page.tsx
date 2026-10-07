@@ -36,6 +36,7 @@ interface Reservation {
   trainer: string;
   status: string;
   client?: ClientProfile | null;
+  trainerProfile?: { first_name: string; last_name: string } | null;
 }
 
 interface SelectedSlotInfo {
@@ -100,8 +101,10 @@ export default function WeeklySchedulePage() {
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [activeTab, setActiveTab] = useState<'capacity' | 'trainers'>('capacity');
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [trainers, setTrainers] = useState<{ id: string; first_name: string; last_name: string }[]>([]);
   const [activeMobileDayIndex, setActiveMobileDayIndex] = useState<number>(0);
 
   // Stav pro Modal / Pop-up formulář
@@ -118,19 +121,33 @@ export default function WeeklySchedulePage() {
 
   const fetchData = async (userId: string) => {
     setLoading(true);
-    const startDate = currentWeekDays[0].isoString;
-    const endDate = currentWeekDays[6].isoString;
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    const toISODate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const startDate = activeTab === 'trainers' ? toISODate(start) : currentWeekDays[0].isoString;
+    const endDate = activeTab === 'trainers' ? toISODate(end) : currentWeekDays[6].isoString;
 
     const { data, error } = await supabase
       .from('reservations')
-      .select('*, client:profiles!user_id(id, first_name, last_name, email, phone)')
+      .select('*, client:profiles!user_id(id, first_name, last_name, email, phone), trainerProfile:profiles!trainer_id(id, first_name, last_name)')
       .gte('date', startDate)
       .lte('date', endDate);
 
     if (error) {
       console.error('Chyba při načítání rezervací tělocvičny:', error.message);
+      setReservations([]);
     } else if (data) {
       setReservations(data as Reservation[]);
+    }
+    if (activeTab === 'trainers') {
+      const { data: trainerData, error: trainerError } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .in('role', ['TRAINER', 'ADMIN']);
+      if (trainerError) console.error('Chyba při načítání trenérů:', trainerError.message);
+      setTrainers(trainerData || []);
     }
     setLoading(false);
   };
@@ -159,7 +176,7 @@ export default function WeeklySchedulePage() {
     };
 
     checkUser();
-  }, [router, weekOffset]);
+  }, [router, weekOffset, activeTab]);
 
   // Nastavit výchozí mobilní den na "Dnes" pokud je v aktuálním týdnu
   useEffect(() => {
@@ -344,6 +361,17 @@ export default function WeeklySchedulePage() {
     });
   }, [currentWeekDays, reservations, currentUserId]);
 
+  const nextSevenDays = useMemo(() => {
+    const today = new Date();
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + index);
+      const isoString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      return { isoString, label: index === 0 ? 'Dnes' : index === 1 ? 'Zítra' : DAYS_NAMES[date.getDay()], dateLabel: date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' }) };
+    });
+  }, [activeTab]);
+
+  const sortedTrainers = useMemo(() => [...trainers].sort((a, b) => `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`, 'cs')), [trainers]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -389,8 +417,17 @@ export default function WeeklySchedulePage() {
           </div>
         </header>
 
+        <div className="inline-flex w-full sm:w-auto rounded-xl border border-gray-200 bg-white p-1 shadow-sm" role="tablist" aria-label="Zobrazení tělocvičny">
+          <button type="button" role="tab" aria-selected={activeTab === 'capacity'} onClick={() => setActiveTab('capacity')} className={`flex-1 sm:flex-none rounded-lg px-4 py-2.5 text-sm font-bold transition ${activeTab === 'capacity' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}>
+            Obsazenost tělocvičny
+          </button>
+          <button type="button" role="tab" aria-selected={activeTab === 'trainers'} onClick={() => setActiveTab('trainers')} className={`flex-1 sm:flex-none rounded-lg px-4 py-2.5 text-sm font-bold transition ${activeTab === 'trainers' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}>
+            Rozvrh trenérů
+          </button>
+        </div>
+
         {/* LEGENDA */}
-        <section className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
+        {activeTab === 'capacity' ? <section className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
           <div className="flex flex-wrap gap-4 sm:gap-6 text-xs font-bold text-gray-600 border-b border-gray-100 pb-4">
             <div className="flex items-center gap-2">
               <span className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-slate-200 border border-slate-300" />
@@ -537,7 +574,50 @@ export default function WeeklySchedulePage() {
               </div>
             </div>
           </div>
-        </section>
+        </section> : (
+          <section className="space-y-5">
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+              Přehled rezervovaných tréninků všech trenérů od dneška na dalších šest dní. Trenéři jsou seřazeni abecedně podle příjmení.
+            </div>
+            {nextSevenDays.map(day => (
+              <article key={day.isoString} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <header className="flex items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/80 px-4 py-4 sm:px-6">
+                  <h2 className="text-base font-extrabold text-gray-900 sm:text-lg">{day.label} <span className="font-semibold text-gray-500">{day.dateLabel}</span></h2>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gray-500 shadow-sm">{sortedTrainers.length} trenérů</span>
+                </header>
+                <div className="divide-y divide-gray-100">
+                  {sortedTrainers.map(trainer => {
+                    const trainerReservations = reservations
+                      .filter(reservation => reservation.date === day.isoString && reservation.trainer_id === trainer.id && ['COMPLETED', 'CONFIRMED', 'PENDING'].includes(reservation.status))
+                      .sort((a, b) => timeToMinutes(a.time.split('-')[0]) - timeToMinutes(b.time.split('-')[0]));
+                    return (
+                      <div key={trainer.id} className="grid gap-2 px-4 py-4 sm:grid-cols-[220px_1fr] sm:gap-5 sm:px-6">
+                        <div className="flex items-start gap-2 font-bold text-gray-800"><UserCheck size={17} className="mt-0.5 shrink-0 text-indigo-500" />{trainer.first_name} {trainer.last_name}</div>
+                        {trainerReservations.length ? (
+                          <ol className="space-y-2">
+                            {trainerReservations.map((reservation, index) => {
+                              const [startTime, endTime] = reservation.time.includes('-') ? reservation.time.split('-') : [reservation.time, getEndTime(reservation.time)];
+                              const clientName = reservation.client ? `${reservation.client.first_name} ${reservation.client.last_name}` : reservation.trainer || 'Blokace';
+                              const trainerName = reservation.trainerProfile ? `${reservation.trainerProfile.first_name} ${reservation.trainerProfile.last_name}` : `${trainer.first_name} ${trainer.last_name}`;
+                              return <li key={reservation.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-gray-50 px-3 py-2 text-sm">
+                                <span className="w-5 text-xs font-bold text-gray-400">{index + 1}.</span>
+                                <span className="font-bold tabular-nums text-indigo-700">{startTime}–{endTime}</span>
+                                <span className="text-gray-300">·</span>
+                                <span className="font-medium text-gray-700">{clientName}</span>
+                                <span className="ml-auto text-xs text-gray-400">Trenér: {trainerName}</span>
+                              </li>;
+                            })}
+                          </ol>
+                        ) : <p className="text-sm font-medium text-gray-400">Volno</p>}
+                      </div>
+                    );
+                  })}
+                  {!sortedTrainers.length && <p className="px-6 py-8 text-center text-sm text-gray-500">V systému nejsou evidováni žádní trenéři.</p>}
+                </div>
+              </article>
+            ))}
+          </section>
+        )}
       </main>
 
       {/* POP-UP / MODAL (Plně optimalizováno pro mobily) */}

@@ -136,7 +136,7 @@ export default function TrainerDashboardPage() {
           };
         }
         
-        if (res.status === 'CONFIRMED' && res.date && res.date < todayStr) {
+        if (['COMPLETED', 'CONFIRMED'].includes(res.status) && res.date && res.date < todayStr) {
           statsMap[res.user_id].completed_trainings += 1;
         }
       });

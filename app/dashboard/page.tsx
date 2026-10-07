@@ -58,6 +58,16 @@ interface Reservation {
   };
 }
 
+interface TrainerTrainingStats {
+  total: number;
+  thisMonth: number;
+  lastMonth: number;
+}
+
+function toLocalISODate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 // Pomocná funkce pro převod YYYY-MM-DD a HH:MM na Date
 function parseReservationDateTime(dateStr: string, timeStr: string): Date {
   const [year, month, day] = dateStr.split('-').map(Number);
@@ -90,6 +100,7 @@ export default function DashboardPage() {
   const [trainerClients, setTrainerClients] = useState<any[]>([]);
   const [unassignedBookings, setUnassignedBookings] = useState<any[]>([]);
   const [globalClientsStats, setGlobalClientsStats] = useState<{ [key: string]: any }>({});
+  const [trainerTrainingStats, setTrainerTrainingStats] = useState<TrainerTrainingStats>({ total: 0, thisMonth: 0, lastMonth: 0 });
 
   // Stavy pro editaci profilu
   const [activeField, setActiveField] = useState<string | null>(null);
@@ -165,12 +176,29 @@ export default function DashboardPage() {
           .from('reservations')
           .select('date, user_id, status');
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = toLocalISODate(new Date());
         const statsMap: { [key: string]: number } = {};
         allRes?.forEach((r) => {
-          if (r.user_id && r.status === 'CONFIRMED' && r.date < todayStr) {
+          if (r.user_id && ['COMPLETED', 'CONFIRMED'].includes(r.status) && r.date < todayStr) {
             statsMap[r.user_id] = (statsMap[r.user_id] || 0) + 1;
           }
+        });
+
+        const now = new Date();
+        const currentMonthStart = toLocalISODate(new Date(now.getFullYear(), now.getMonth(), 1));
+        const nextMonthStart = toLocalISODate(new Date(now.getFullYear(), now.getMonth() + 1, 1));
+        const lastMonthStart = toLocalISODate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+        const { data: completedForTrainer } = await supabase
+          .from('reservations')
+          .select('date')
+          .eq('trainer_id', user.id)
+          .eq('status', 'COMPLETED')
+          .lt('date', nextMonthStart);
+        const trainerDates = (completedForTrainer || []).map((reservation) => reservation.date).filter(Boolean);
+        setTrainerTrainingStats({
+          total: trainerDates.length,
+          thisMonth: trainerDates.filter((date) => date >= currentMonthStart).length,
+          lastMonth: trainerDates.filter((date) => date >= lastMonthStart && date < currentMonthStart).length,
         });
 
         setGlobalClientsStats(statsMap);
@@ -366,7 +394,7 @@ const handleCancelReservation = async (id: string) => {
   }, [myReservations]);
 
   const upcomingTrainerClients = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = toLocalISODate(new Date());
     return trainerClients.filter(c => c.date >= todayStr);
   }, [trainerClients]);
 
@@ -446,13 +474,14 @@ const handleCancelReservation = async (id: string) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {isTrainer ? (
             <>
-              <div className="bg-white p-5 rounded-2xl border border-gray-200/80 shadow-sm flex items-center gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-gray-200/80 shadow-sm flex items-center gap-4 sm:col-span-2 lg:col-span-1">
                 <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
                   <UserCheck size={24} />
                 </div>
                 <div>
-                  <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Moji klienti</span>
-                  <span className="text-2xl font-black text-gray-800">{upcomingTrainerClients.length} <span className="text-xs font-normal text-gray-500">naplánováno</span></span>
+                  <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Absolvované lekce</span>
+                  <span className="text-2xl font-black text-gray-800">{trainerTrainingStats.total} <span className="text-xs font-normal text-gray-500">celkem</span></span>
+                  <div className="mt-1 text-xs text-gray-500">Tento měsíc <strong className="text-indigo-700">{trainerTrainingStats.thisMonth}</strong> · Minulý měsíc <strong className="text-indigo-700">{trainerTrainingStats.lastMonth}</strong></div>
                 </div>
               </div>
 
