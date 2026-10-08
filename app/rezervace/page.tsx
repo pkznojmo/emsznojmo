@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, LogIn } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { intervalsOverlap, isRangeCovered, normalizeDate, timeToMinutes } from '../../lib/availability';
 
 interface DbTrainer { id: string; }
 interface TrainerAvailability { trainer_id: string; day_of_week: number; start_time: string; end_time: string; }
@@ -101,8 +102,6 @@ export default function PublicLessonPage() {
     loadPublicData();
   }, []);
 
-  const isTimeBetween = (time: string, start: string, end: string) => time >= start && time < end;
-
   const ALL_TIME_SLOTS = useMemo(() => {
     const slots = [];
     for (let minutes = 360; minutes < 1140; minutes += 30) {
@@ -120,20 +119,33 @@ export default function PublicLessonPage() {
 
     return ALL_TIME_SLOTS.map(slot => {
       const workingTrainers = trainers.filter(t => {
-        const hasAvailability = availabilities.some(a => a.trainer_id === t.id && a.day_of_week === dayInfo.dayOfWeek && isTimeBetween(slot, a.start_time, a.end_time));
-        const hasExtra = exceptions.some(e => e.trainer_id === t.id && e.date === selectedDate && e.type === 'AVAILABLE' && isTimeBetween(slot, e.start_time, e.end_time));
-        const isUnavailable = exceptions.some(e => e.trainer_id === t.id && e.date === selectedDate && e.type === 'UNAVAILABLE' && isTimeBetween(slot, e.start_time, e.end_time));
+        const slotStart = timeToMinutes(slot);
+        const slotEnd = slotStart + 30;
+        const hasAvailability = isRangeCovered(slotStart, slotEnd, availabilities
+          .filter(a => a.trainer_id === t.id && a.day_of_week === dayInfo.dayOfWeek)
+          .map(a => ({ start: timeToMinutes(a.start_time), end: timeToMinutes(a.end_time) })));
+        const hasExtra = isRangeCovered(slotStart, slotEnd, exceptions
+          .filter(e => e.trainer_id === t.id && normalizeDate(e.date) === selectedDate && e.type === 'AVAILABLE')
+          .map(e => ({ start: timeToMinutes(e.start_time), end: timeToMinutes(e.end_time) })));
+        const isUnavailable = exceptions.some(e => e.trainer_id === t.id && normalizeDate(e.date) === selectedDate && e.type === 'UNAVAILABLE' &&
+          intervalsOverlap(slotStart, slotEnd, timeToMinutes(e.start_time), timeToMinutes(e.end_time)));
         return (hasAvailability || hasExtra) && !isUnavailable;
       });
 
-      const reservationsAtSlot = existingReservations.filter(r => r.date === selectedDate && r.time === slot);
-      const isRoomOccupied = reservationsAtSlot.length > 0;
+      const reservationsAtSlot = existingReservations.filter(r => {
+        if (normalizeDate(r.date) !== selectedDate) return false;
+        const [start, end] = r.time.includes('-') ? r.time.split('-').map(value => value.trim()) : [r.time, calculateEndTime(r.time)];
+        return intervalsOverlap(timeToMinutes(slot), timeToMinutes(slot) + 30, timeToMinutes(start), timeToMinutes(end));
+      });
+      const isRoomOccupied = reservationsAtSlot.some(r => r.trainer_id === null);
+      const busyTrainerIds = new Set(reservationsAtSlot.map(r => r.trainer_id).filter((id): id is string => Boolean(id)));
+      const freeWorkingTrainers = workingTrainers.filter(t => !busyTrainerIds.has(t.id));
 
       let isSlotUnavailable = false;
 
       if (isRoomOccupied) {
         isSlotUnavailable = true;
-      } else if (workingTrainers.length === 0) {
+      } else if (freeWorkingTrainers.length === 0) {
         isSlotUnavailable = true;
       }
 

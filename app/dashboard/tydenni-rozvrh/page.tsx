@@ -3,8 +3,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '../../comp/Sidebar';
-import { Calendar as CalendarIcon, Info, StepBack, StepForward } from 'lucide-react';
+import { StepBack, StepForward } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { normalizeDate, timeToMinutes } from '../../../lib/availability';
 
 const DAYS_NAMES: { [key: number]: string } = {
   1: 'Pondělí', 2: 'Úterý', 3: 'Středa', 4: 'Čtvrtek', 5: 'Pátek', 6: 'Sobota', 0: 'Neděle'
@@ -19,6 +20,10 @@ const GENERATED_SLOTS = (() => {
   }
   return slots;
 })();
+
+type SlotStatus = 'REGULAR_WORKING' | 'EXTRA_WORKING' | 'BLOCKED' | 'OFF';
+type AvailabilityRow = { day_of_week: number; start_time: string; end_time: string };
+type ExceptionRow = { id: string; date: string; start_time: string; end_time: string; type: 'AVAILABLE' | 'UNAVAILABLE' };
 
 const getWeekDays = (weekOffset = 0) => {
   const days = [];
@@ -61,8 +66,9 @@ export default function WeeklySchedulePage() {
   const [trainerId, setTrainerId] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
 
-  const [regularHours, setRegularHours] = useState<any[]>([]);
-  const [exceptions, setExceptions] = useState<any[]>([]);
+  const [regularHours, setRegularHours] = useState<AvailabilityRow[]>([]);
+  const [exceptions, setExceptions] = useState<ExceptionRow[]>([]);
+  const [savingSlots, setSavingSlots] = useState<Set<string>>(new Set());
 
   const currentWeekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
 
@@ -119,72 +125,108 @@ export default function WeeklySchedulePage() {
     return `${endH.toString().padStart(2, '0')}:${endMStr}`;
   };
 
+  const normalizeTime = (value: string) => {
+    const minutes = timeToMinutes(value);
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+  };
+
   const handleExceptionClick = async (
     dateStr: string, 
     slotTime: string, 
-    currentStatus: 'REGULAR_WORKING' | 'EXTRA_WORKING' | 'BLOCKED' | 'OFF'
+    currentStatus: SlotStatus
   ) => {
     if (!trainerId) return;
 
-    const existingException = exceptions.find(
-      e => e.date === dateStr && e.start_time === slotTime
-    );
+    const slotKey = `${dateStr}-${slotTime}`;
+    if (savingSlots.has(slotKey)) return;
+    setSavingSlots(previous => new Set(previous).add(slotKey));
 
-    if (existingException) {
-      // Mazání podle ID
-      const { error } = await supabase
+    try {
+      // Re-read this unique key immediately before writing. The local React
+      // state may be stale if another click/tab inserted the row since fetch.
+      const { data: existingRows, error: lookupError } = await supabase
         .from('trainer_exceptions')
-        .delete()
-        .eq('id', existingException.id);
+        .select('id, type')
+        .eq('trainer_id', trainerId)
+        .eq('date', dateStr)
+        .eq('start_time', normalizeTime(slotTime))
+        .limit(1);
 
-      if (error) {
-        console.error('Chyba při mazání výjimky:', error.message);
-        alert(`Chyba při mazání: ${error.message}`);
-      }
-    } else {
-      // Nová výjimka
-      const newType = currentStatus === 'REGULAR_WORKING' ? 'UNAVAILABLE' : 'AVAILABLE';
-      
-      const { error } = await supabase
-        .from('trainer_exceptions')
-        .insert([{
-          trainer_id: trainerId,
-          date: dateStr,
-          start_time: slotTime,
-          end_time: getEndTime(slotTime),
-          type: newType
-        }]);
+      if (lookupError) throw lookupError;
 
-      if (error) {
-        console.error('Chyba při ukládání výjimky:', error.message);
-        alert(`Chyba při ukládání: ${error.message}`);
+      const existingException = existingRows?.[0];
+      if (existingException) {
+        const { error } = await supabase
+          .from('trainer_exceptions')
+          .delete()
+          .eq('id', existingException.id);
+        if (error) throw error;
+      } else {
+        const coveredException = exceptions.find(
+          e => normalizeDate(e.date) === dateStr &&
+            timeToMinutes(slotTime) > timeToMinutes(e.start_time) &&
+            timeToMinutes(slotTime) < timeToMinutes(e.end_time)
+        );
+        const type = currentStatus === 'REGULAR_WORKING' ? 'UNAVAILABLE' : 'AVAILABLE';
+        const { error } = await supabase
+          .from('trainer_exceptions')
+          .upsert({
+            trainer_id: trainerId,
+            date: dateStr,
+            start_time: normalizeTime(slotTime),
+            end_time: getEndTime(slotTime),
+            type,
+          }, { onConflict: 'trainer_id,date,start_time' });
+
+        if (error) throw error;
+
+        // If this slot was inside an older multi-slot exception, keep its
+        // range intact and split it around the newly selected slot.
+        if (coveredException) {
+          const { error: trimError } = await supabase
+            .from('trainer_exceptions')
+            .update({ end_time: slotTime })
+            .eq('id', coveredException.id);
+          if (trimError) throw trimError;
+        }
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Neznámá chyba';
+      console.error('Chyba při ukládání výjimky:', message);
+      alert(`Chyba při ukládání: ${message}`);
+    } finally {
+      setSavingSlots(previous => {
+        const next = new Set(previous);
+        next.delete(slotKey);
+        return next;
+      });
+      await fetchData(trainerId);
     }
-
-    await fetchData(trainerId);
   };
 
   const calculatedDaysMatrix = useMemo(() => {
     return currentWeekDays.map(day => {
       const slots = GENERATED_SLOTS.map(slot => {
         const dayException = exceptions.find(
-          e => e.date === day.isoString && slot >= e.start_time && slot < e.end_time
+          e => normalizeDate(e.date) === day.isoString && timeToMinutes(slot) >= timeToMinutes(e.start_time) && timeToMinutes(slot) < timeToMinutes(e.end_time)
         );
         
         if (dayException) {
           return {
             time: slot,
-            status: dayException.type === 'UNAVAILABLE' ? 'BLOCKED' : 'EXTRA_WORKING'
+            status: (dayException.type === 'UNAVAILABLE' ? 'BLOCKED' : 'EXTRA_WORKING') as SlotStatus
           };
         }
         
         const isRegularWork = regularHours.some(
-          r => r.day_of_week === day.dayOfWeek && slot >= r.start_time && slot < r.end_time
+          r => r.day_of_week === day.dayOfWeek && timeToMinutes(slot) >= timeToMinutes(r.start_time) && timeToMinutes(slot) < timeToMinutes(r.end_time)
         );
 
         return {
           time: slot,
-          status: isRegularWork ? 'REGULAR_WORKING' : 'OFF'
+          status: (isRegularWork ? 'REGULAR_WORKING' : 'OFF') as SlotStatus
         };
       });
 
@@ -279,7 +321,7 @@ export default function WeeklySchedulePage() {
                         return (
                           <div
                             key={slot.time}
-                            onClick={() => handleExceptionClick(day.isoString, slot.time, slot.status as any)}
+                            onClick={() => handleExceptionClick(day.isoString, slot.time, slot.status)}
                             className={`flex-1 cursor-pointer border-r border-gray-200/40 last:border-0 transition-all flex flex-col items-center justify-center select-none ${bgClass}`}
                             title={`${day.formatted} v ${slot.time} – ${
                               slot.status === 'REGULAR_WORKING' ? 'Běžná práce' :

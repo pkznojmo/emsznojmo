@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Sidebar from '../../comp/Sidebar';
 import { StepForward, StepBack, Clock, UserPlus, History, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { intervalsOverlap, isRangeCovered, normalizeDate, timeToMinutes } from '../../../lib/availability';
 
 const DAYS_NAMES: { [key: number]: string } = {
   1: 'Pondělí', 2: 'Úterý', 3: 'Středa', 4: 'Čtvrtek', 5: 'Pátek', 6: 'Sobota', 0: 'Neděle'
@@ -192,26 +193,28 @@ export default function TrainerDashboardPage() {
   const getAvailableTrainersForSlot = (dateStr: string, timeStr: string) => {
     if (!dateStr || !timeStr) return [];
 
-    const dateObj = new Date(dateStr);
+    const dateObj = new Date(`${normalizeDate(dateStr)}T12:00:00`);
     const dayOfWeek = dateObj.getDay(); // 0 = Neděle, 1 = Pondělí, ...
     const cleanTime = timeStr.split('-')[0].trim(); // Převede "14:00 - 14:45" na "14:00"
+    const slotStart = timeToMinutes(cleanTime);
+    const slotEnd = timeStr.includes('-') ? timeToMinutes(timeStr.split('-')[1].trim()) : slotStart + 30;
 
     return allTrainers.filter(trainer => {
       // a) Kontrola výjimek (UNAVAILABLE ruší dostupnost, AVAILABLE ji vynucuje)
       const hasUnavailableExc = exceptions.some(exc => 
         exc.trainer_id === trainer.id && 
-        exc.date === dateStr && 
-        exc.start_time <= cleanTime && 
-        exc.end_time > cleanTime && 
+        normalizeDate(exc.date) === normalizeDate(dateStr) &&
+        intervalsOverlap(slotStart, slotEnd, timeToMinutes(exc.start_time), timeToMinutes(exc.end_time)) &&
         exc.type === 'UNAVAILABLE'
       );
       if (hasUnavailableExc) return false;
 
       const hasAvailableExc = exceptions.some(exc => 
         exc.trainer_id === trainer.id && 
-        exc.date === dateStr && 
-        exc.start_time <= cleanTime && 
-        exc.end_time > cleanTime && 
+        normalizeDate(exc.date) === normalizeDate(dateStr) &&
+        isRangeCovered(slotStart, slotEnd, exceptions
+          .filter(item => item.trainer_id === trainer.id && normalizeDate(item.date) === normalizeDate(dateStr) && item.type === 'AVAILABLE')
+          .map(item => ({ start: timeToMinutes(item.start_time), end: timeToMinutes(item.end_time) }))) &&
         exc.type === 'AVAILABLE'
       );
       if (hasAvailableExc) return true;
@@ -220,8 +223,8 @@ export default function TrainerDashboardPage() {
       const hasRegularAvail = availabilities.some(avail => 
         avail.trainer_id === trainer.id && 
         avail.day_of_week === dayOfWeek && 
-        avail.start_time <= cleanTime && 
-        avail.end_time > cleanTime
+        timeToMinutes(avail.start_time) <= slotStart &&
+        timeToMinutes(avail.end_time) >= slotEnd
       );
 
       return hasRegularAvail;

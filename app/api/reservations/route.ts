@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendReservationEmails } from '@/lib/emails';
-
-const timeToMin = (t: string): number => {
-  const [h, m] = t.trim().split(':').map(Number);
-  return h * 60 + m;
-};
+import { intervalsOverlap, isRangeCovered, normalizeDate, timeToMinutes } from '@/lib/availability';
 
 export async function POST(request: Request) {
   try {
@@ -27,7 +23,6 @@ export async function POST(request: Request) {
       trainerName,   // Jméno trenéra
       customerName,  
       customerEmail, 
-      trainerEmails, // Pole e-mailů z frontendu
       serviceName,   
     } = body;
 
@@ -55,18 +50,20 @@ export async function POST(request: Request) {
 
     // 3. Výpočet startovního a koncového času
     const cleanTime = time.split('-')[0].trim();
-    const slotStartMin = timeToMin(cleanTime);
+    const slotStartMin = timeToMinutes(cleanTime);
 
     let slotEndMin = slotStartMin + 45;
     if (time.includes('-')) {
       const endTimeStr = time.split('-')[1].trim();
-      slotEndMin = timeToMin(endTimeStr);
+      slotEndMin = timeToMinutes(endTimeStr);
     }
 
     // 4. URČENÍ CÍLOVÝCH E-MAILŮ TRENÉRŮ
     let finalTrainerEmails: string[] = [];
+    let assignedTrainerId: string | null = trainer_id || null;
+    let assignedTrainerName = trainerName || 'Jakýkoliv trenér';
 
-    if (!trainer_id || trainerName === 'Jakýkoliv trenér') {
+    {
       const [yr, mo, dy] = date.split('-').map(Number);
       const dayOfWeek = new Date(yr, mo - 1, dy).getDay();
 
@@ -86,27 +83,21 @@ export async function POST(request: Request) {
       const existingReservations = resRes.data || [];
 
       const availableTrainers = allTrainers.filter(t => {
-        const hasAvailability = availabilities.some(a => 
-          a.trainer_id === t.id && 
-          a.day_of_week === dayOfWeek && 
-          timeToMin(a.start_time) <= slotStartMin && 
-          timeToMin(a.end_time) >= slotEndMin
-        );
+        const regularIntervals = availabilities
+          .filter(a => a.trainer_id === t.id && a.day_of_week === dayOfWeek)
+          .map(a => ({ start: timeToMinutes(a.start_time), end: timeToMinutes(a.end_time) }));
+        const extraIntervals = exceptions
+          .filter(e => e.trainer_id === t.id && e.date === date && e.type === 'AVAILABLE')
+          .map(e => ({ start: timeToMinutes(e.start_time), end: timeToMinutes(e.end_time) }));
 
-        const hasExtra = exceptions.some(e => 
-          e.trainer_id === t.id && 
-          e.date === date && 
-          e.type === 'AVAILABLE' && 
-          timeToMin(e.start_time) <= slotStartMin && 
-          timeToMin(e.end_time) >= slotEndMin
-        );
+        const hasAvailability = isRangeCovered(slotStartMin, slotEndMin, regularIntervals);
+        const hasExtra = isRangeCovered(slotStartMin, slotEndMin, extraIntervals);
 
         const isUnavailable = exceptions.some(e => 
           e.trainer_id === t.id && 
           e.date === date && 
           e.type === 'UNAVAILABLE' && 
-          timeToMin(e.start_time) < slotEndMin && 
-          timeToMin(e.end_time) > slotStartMin
+          intervalsOverlap(slotStartMin, slotEndMin, timeToMinutes(e.start_time), timeToMinutes(e.end_time))
         );
 
         if ((!hasAvailability && !hasExtra) || isUnavailable) return false;
@@ -117,30 +108,33 @@ export async function POST(request: Request) {
           let rEndMin = 0;
           if (r.time.includes('-')) {
             const [s, e] = r.time.split('-');
-            rStartMin = timeToMin(s.trim());
-            rEndMin = timeToMin(e.trim());
+            rStartMin = timeToMinutes(s.trim());
+            rEndMin = timeToMinutes(e.trim());
           } else {
-            rStartMin = timeToMin(r.time.trim());
+            rStartMin = timeToMinutes(r.time.trim());
             rEndMin = rStartMin + 30;
           }
-          return slotStartMin < rEndMin && slotEndMin > rStartMin;
+          return intervalsOverlap(slotStartMin, slotEndMin, rStartMin, rEndMin);
         });
 
         return !isBusy;
       });
 
-      finalTrainerEmails = availableTrainers
+      const eligibleTrainers = trainer_id
+        ? availableTrainers.filter((trainer) => trainer.id === trainer_id)
+        : availableTrainers;
+
+      if (eligibleTrainers.length === 0) {
+        return NextResponse.json({ error: 'Pro tento čas není vybraný trenér k dispozici.' }, { status: 400 });
+      }
+
+      finalTrainerEmails = eligibleTrainers
         .map(t => t.email)
         .filter((e): e is string => Boolean(e));
 
-      if (finalTrainerEmails.length === 0) {
-        return NextResponse.json({ error: 'Pro tento čas není k dispozici žádný volný trenér.' }, { status: 400 });
-      }
-    } else {
-      if (Array.isArray(trainerEmails)) {
-        finalTrainerEmails = trainerEmails.filter((e): e is string => Boolean(e));
-      } else if (typeof trainerEmails === 'string' && trainerEmails) {
-        finalTrainerEmails = [trainerEmails];
+      if (!trainer_id && eligibleTrainers.length === 1) {
+        assignedTrainerId = eligibleTrainers[0].id;
+        assignedTrainerName = `${eligibleTrainers[0].first_name} ${eligibleTrainers[0].last_name}`.trim();
       }
     }
 
@@ -182,10 +176,10 @@ export async function POST(request: Request) {
       .insert([
         {
           user_id: user_id,
-          trainer_id: trainer_id || null,
+          trainer_id: assignedTrainerId,
           date: date,
           time: time,
-          trainer: trainerName || 'Jakýkoliv trenér',
+          trainer: assignedTrainerName,
           status: 'CONFIRMED',
         },
       ])

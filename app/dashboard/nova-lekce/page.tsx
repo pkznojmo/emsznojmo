@@ -6,16 +6,12 @@ import Link from 'next/link';
 import Sidebar from '../../comp/Sidebar';
 import { Calendar as CalendarIcon, Clock, User, ChevronLeft, ChevronRight, Info, Coins, AlertCircle, ArrowRight, X, Check, Users } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
+import { intervalsOverlap, isRangeCovered, normalizeDate, timeToMinutes } from '../../../lib/availability';
 
 interface DbTrainer { id: string; first_name: string; last_name: string; email?: string; }
 interface TrainerAvailability { trainer_id: string; day_of_week: number; start_time: string; end_time: string; }
 interface TrainerException { trainer_id: string; date: string; start_time: string; end_time: string; type: 'AVAILABLE' | 'UNAVAILABLE'; }
 interface ExistingReservation { trainer_id: string | null; date: string; time: string; user_id?: string; }
-
-const timeToMinutes = (timeStr: string): number => {
-  const [hours, minutes] = timeStr.trim().split(':').map(Number);
-  return hours * 60 + minutes;
-};
 
 const calculateEndTime = (startTime: string): string => {
   const [hours, minutes] = startTime.split(':').map(Number);
@@ -26,17 +22,6 @@ const calculateEndTime = (startTime: string): string => {
     endHours += 1;
   }
   return `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
-};
-
-const getNextTimeSlot = (time: string): string => {
-  const [hours, minutes] = time.split(':').map(Number);
-  let nextMinutes = minutes + 30;
-  let nextHours = hours;
-  if (nextMinutes >= 60) {
-    nextMinutes -= 60;
-    nextHours += 1;
-  }
-  return `${nextHours.toString().padStart(2, '0')}:${nextHours.toString().padStart(2, '0')}`;
 };
 
 const calculateFirstLessonEndTime = (startTime: string): string => {
@@ -61,6 +46,7 @@ export default function NewLessonPage() {
   const [trainers, setTrainers] = useState<DbTrainer[]>([]);
   const [availabilities, setAvailabilities] = useState<TrainerAvailability[]>([]);
   const [exceptions, setExceptions] = useState<TrainerException[]>([]);
+  const [availabilityLoadError, setAvailabilityLoadError] = useState('');
   const [existingReservations, setExistingReservations] = useState<ExistingReservation[]>([]);
   const [userHasPreviousReservations, setUserHasPreviousReservations] = useState(false);
   
@@ -77,18 +63,15 @@ export default function NewLessonPage() {
     const days = [];
     const options: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'numeric' };
     const today = new Date();
-    const todayTarget = new Date(today.getTime());
-    
-    const currentDay = todayTarget.getDay();
-    const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay; 
-    todayTarget.setDate(todayTarget.getDate() + distanceToMonday + (weekOffset * 7));
+    const toLocalISODate = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const todayTarget = new Date(today.getFullYear(), today.getMonth(), today.getDate() + (weekOffset * 7));
 
-    const todayISO = today.toISOString().split('T')[0];
+    const todayISO = toLocalISODate(today);
 
     for (let i = 0; i < 7; i++) {
       const d = new Date(todayTarget.getTime());
       d.setDate(d.getDate() + i);
-      const isoString = d.toISOString().split('T')[0];
+      const isoString = toLocalISODate(d);
       
       const compareDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
       const compareToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -105,14 +88,17 @@ export default function NewLessonPage() {
   }, [weekOffset]);
 
   useEffect(() => {
-    if (upcomingDays.length > 0) {
-      const isSelectedDayInWeek = upcomingDays.some(d => d.isoString === selectedDate);
-      if (!isSelectedDayInWeek) {
-        const firstValidDay = upcomingDays.find(d => !d.isPast) || upcomingDays[0];
-        setSelectedDate(firstValidDay.isoString);
-        setSelectedTime('');
+    const timer = window.setTimeout(() => {
+      if (upcomingDays.length > 0) {
+        const isSelectedDayInWeek = upcomingDays.some(d => d.isoString === selectedDate);
+        if (!isSelectedDayInWeek) {
+          const firstValidDay = upcomingDays.find(d => !d.isPast) || upcomingDays[0];
+          setSelectedDate(firstValidDay.isoString);
+          setSelectedTime('');
+        }
       }
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [upcomingDays, selectedDate]);
 
   useEffect(() => {
@@ -134,19 +120,24 @@ export default function NewLessonPage() {
         credit_balance: profile?.credit_balance ?? 0,
       });
 
-      const [t, a, e, r] = await Promise.all([
+      const [t, a, r] = await Promise.all([
         supabase
           .from('profiles')
           .select('id, first_name, last_name, email')
           .in('role', ['TRAINER', 'ADMIN']),
         supabase.from('trainer_availability').select('*'),
-        supabase.from('trainer_exceptions').select('*'),
         supabase.from('reservations').select('trainer_id, date, time, user_id').in('status', ['CONFIRMED', 'PENDING'])
       ]);
 
+      if (t.error) console.error('Nepodařilo se načíst trenéry:', t.error);
+      if (a.error) console.error('Nepodařilo se načíst pravidelnou dostupnost:', a.error);
+      if (r.error) console.error('Nepodařilo se načíst rezervace:', r.error);
+      if (t.error || a.error || r.error) {
+        setAvailabilityLoadError('Nepodařilo se načíst kompletní rozvrh. Obnovte stránku, případně kontaktujte administrátora.');
+      }
+
       if (t.data) setTrainers(t.data);
       if (a.data) setAvailabilities(a.data);
-      if (e.data) setExceptions(e.data);
       if (r.data) {
         setExistingReservations(r.data);
         const userResCount = r.data.filter(res => res.user_id === authUser.id).length;
@@ -156,7 +147,34 @@ export default function NewLessonPage() {
     initializePage();
   }, [router]);
 
-  const isTimeBetween = (time: string, start: string, end: string) => time >= start && time < end;
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedDate) return;
+
+    const loadDateExceptions = async () => {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        if (!cancelled) setAvailabilityLoadError('Pro načtení dostupnosti je potřeba se znovu přihlásit.');
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/trainer-exceptions?date=${encodeURIComponent(selectedDate)}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: 'no-store',
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Nepodařilo se načíst výjimky trenérů.');
+        if (!cancelled) setExceptions(result.exceptions ?? []);
+      } catch (loadError) {
+        console.error('Nepodařilo se načíst výjimky trenérů:', loadError);
+        if (!cancelled) setAvailabilityLoadError(loadError instanceof Error ? loadError.message : 'Nepodařilo se načíst výjimky trenérů.');
+      }
+    };
+
+    loadDateExceptions();
+    return () => { cancelled = true; };
+  }, [selectedDate]);
 
   const ALL_TIME_SLOTS = useMemo(() => {
     const slots = [];
@@ -173,73 +191,49 @@ export default function NewLessonPage() {
     const dayInfo = upcomingDays.find(d => d.isoString === selectedDate);
     if (!dayInfo) return [];
 
-    const checkSlotValidity = (slot: string) => {
-      const slotStartMin = timeToMinutes(slot);
-      const slotEndMin = slotStartMin + 30;
-
-      const workingTrainers = trainers.filter(t => {
-        const hasAvailability = availabilities.some(a => a.trainer_id === t.id && a.day_of_week === dayInfo.dayOfWeek && isTimeBetween(slot, a.start_time, a.end_time));
-        const hasExtra = exceptions.some(e => e.trainer_id === t.id && e.date === selectedDate && e.type === 'AVAILABLE' && isTimeBetween(slot, e.start_time, e.end_time));
-        const isUnavailable = exceptions.some(e => e.trainer_id === t.id && e.date === selectedDate && e.type === 'UNAVAILABLE' && isTimeBetween(slot, e.start_time, e.end_time));
-        return (hasAvailability || hasExtra) && !isUnavailable;
-      });
-
-      const reservationsAtSlot = existingReservations.filter(r => {
-        if (r.date !== selectedDate) return false;
-        let resStartMin = 0;
-        let resEndMin = 0;
-        if (r.time.includes('-')) {
-          const [s, e] = r.time.split('-');
-          resStartMin = timeToMinutes(s);
-          resEndMin = timeToMinutes(e);
-        } else {
-          resStartMin = timeToMinutes(r.time);
-          resEndMin = resStartMin + 30;
-        }
-        return slotStartMin < resEndMin && slotEndMin > resStartMin;
-      });
-
-      const isRoomOccupied = reservationsAtSlot.length > 0;
-      let isUnavailable = false;
-
-      if (isRoomOccupied) {
-        isUnavailable = true;
-      } else if (selectedTrainer === 'Jakýkoliv trenér') {
-        if (workingTrainers.length === 0) isUnavailable = true;
-      } else {
-        const isWorking = workingTrainers.some(t => t.id === selectedTrainer);
-        if (!isWorking) isUnavailable = true;
-      }
-
-      return { isUnavailable, workingTrainers };
-    };
-
     return ALL_TIME_SLOTS.map(slot => {
-      const firstSlotCheck = checkSlotValidity(slot);
-      let finalIsUnavailable = firstSlotCheck.isUnavailable;
-      let availableTrainers = firstSlotCheck.workingTrainers;
+      const slotStartMin = timeToMinutes(slot);
+      const slotEndMin = slotStartMin + (userHasPreviousReservations ? 30 : 60);
+      const reservationsAtSlot = existingReservations.filter(r => {
+        if (normalizeDate(r.date) !== selectedDate) return false;
+        const [start, end] = r.time.includes('-')
+          ? r.time.split('-').map(value => value.trim())
+          : [r.time.trim(), ''];
+        const reservationStart = timeToMinutes(start);
+        const reservationEnd = end ? timeToMinutes(end) : reservationStart + 30;
+        return intervalsOverlap(slotStartMin, slotEndMin, reservationStart, reservationEnd);
+      });
 
-      if (!userHasPreviousReservations && !finalIsUnavailable) {
-        const nextSlot = getNextTimeSlot(slot);
-        const secondSlotCheck = checkSlotValidity(nextSlot);
+      // A trainer must cover the whole lesson duration. Regular availability
+      // and adjacent AVAILABLE exceptions form one continuous set of intervals.
+      const availableTrainers = trainers.filter(trainer => {
+        const regularIntervals = availabilities
+          .filter(a => a.trainer_id === trainer.id && a.day_of_week === dayInfo.dayOfWeek)
+          .map(a => ({ start: timeToMinutes(a.start_time), end: timeToMinutes(a.end_time) }));
+        const extraIntervals = exceptions
+          .filter(e => e.trainer_id === trainer.id && normalizeDate(e.date) === selectedDate && e.type === 'AVAILABLE')
+          .map(e => ({ start: timeToMinutes(e.start_time), end: timeToMinutes(e.end_time) }));
+        const isUnavailable = exceptions.some(e =>
+          e.trainer_id === trainer.id && normalizeDate(e.date) === selectedDate && e.type === 'UNAVAILABLE' &&
+          intervalsOverlap(slotStartMin, slotEndMin, timeToMinutes(e.start_time), timeToMinutes(e.end_time))
+        );
+        const hasContinuousAvailability = isRangeCovered(slotStartMin, slotEndMin, [...regularIntervals, ...extraIntervals]);
+        const isBusy = reservationsAtSlot.some(r => r.trainer_id === trainer.id || r.trainer_id === null);
+        return hasContinuousAvailability && !isUnavailable && !isBusy;
+      });
 
-        if (secondSlotCheck.isUnavailable) {
-          finalIsUnavailable = true;
-        } else if (selectedTrainer === 'Jakýkoliv trenér') {
-          availableTrainers = firstSlotCheck.workingTrainers.filter(t1 => 
-            secondSlotCheck.workingTrainers.some(t2 => t2.id === t1.id)
-          );
-          if (availableTrainers.length === 0) finalIsUnavailable = true;
-        } else {
-          const canDoBoth = secondSlotCheck.workingTrainers.some(t => t.id === selectedTrainer);
-          if (!canDoBoth) finalIsUnavailable = true;
-        }
-      }
+      // An unassigned reservation blocks the room; a selected trainer must be
+      // among those free for the complete requested duration.
+      const isRoomOccupied = reservationsAtSlot.some(r => r.trainer_id === null);
+      const matchingTrainers = selectedTrainer === 'Jakýkoliv trenér'
+        ? availableTrainers
+        : availableTrainers.filter(trainer => trainer.id === selectedTrainer);
+      const finalIsUnavailable = isRoomOccupied || matchingTrainers.length === 0;
 
       return { 
         time: slot, 
         isUnavailable: finalIsUnavailable, 
-        availableTrainers: finalIsUnavailable ? [] : availableTrainers 
+        availableTrainers: finalIsUnavailable ? [] : matchingTrainers
       };
     });
   }, [selectedDate, selectedTrainer, trainers, availabilities, exceptions, existingReservations, upcomingDays, userHasPreviousReservations, ALL_TIME_SLOTS]);
@@ -297,8 +291,8 @@ export default function NewLessonPage() {
 
       alert('Rezervace byla úspěšně vytvořena! 1 kredit byl odečten z vašeho účtu.');
       router.push('/dashboard/rezervace');
-    } catch (err: any) {
-      setError(err.message || 'Při ukládání rezervace došlo k chybě.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Při ukládání rezervace došlo k chybě.');
     } finally {
       setSubmitting(false);
       setIsTrainerModalOpen(false);
@@ -329,7 +323,7 @@ export default function NewLessonPage() {
 
     let targetTrainerId: string | null = null;
     let trainerFullName = 'Jakýkoliv trenér';
-    let trainerEmails: string[] = [];
+    const trainerEmails: string[] = [];
 
     if (selectedTrainer !== 'Jakýkoliv trenér') {
       const t = trainers.find(trainer => trainer.id === selectedTrainer);
@@ -409,6 +403,7 @@ export default function NewLessonPage() {
         )}
 
         {error && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-600 font-bold text-sm">{error}</div>}
+        {availabilityLoadError && <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 font-semibold text-sm">{availabilityLoadError}</div>}
 
         <div className="space-y-8 md:space-y-10">
           <section>
@@ -452,7 +447,7 @@ export default function NewLessonPage() {
                   <ChevronLeft size={18} />
                 </button>
                 <span className="text-[11px] font-black px-1 text-gray-500 uppercase tracking-tight text-center whitespace-nowrap">
-                  {weekOffset === 0 ? 'Tento týd.' : `+${weekOffset}. týd.`}
+                  {weekOffset === 0 ? 'Dalších 7 dní' : `Za ${weekOffset * 7} dní`}
                 </span>
                 <button 
                   onClick={() => setWeekOffset(prev => prev + 1)}
