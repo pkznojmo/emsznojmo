@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Sidebar from '../../comp/Sidebar';
 import { StepBack, StepForward } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
-import { normalizeDate, timeToMinutes } from '../../../lib/availability';
+import { exceptionTypeForSlot, findExceptionForSlot, getIsoWeekDays, timeToMinutes } from '../../../lib/availability';
 
 const DAYS_NAMES: { [key: number]: string } = {
   1: 'Pondělí', 2: 'Úterý', 3: 'Středa', 4: 'Čtvrtek', 5: 'Pátek', 6: 'Sobota', 0: 'Neděle'
@@ -26,38 +26,22 @@ type AvailabilityRow = { day_of_week: number; start_time: string; end_time: stri
 type ExceptionRow = { id: string; date: string; start_time: string; end_time: string; type: 'AVAILABLE' | 'UNAVAILABLE' };
 
 const getWeekDays = (weekOffset = 0) => {
-  const days = [];
-  const options: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'numeric' };
-  
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'numeric',
+    timeZone: 'UTC',
+  };
   const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, '0');
-  const dd = String(today.getDate()).padStart(2, '0');
-  const todayISO = `${yyyy}-${mm}-${dd}`;
-  
-  const currentDay = today.getDay();
-  const distanceToMonday = currentDay === 0 ? -6 : 1 - currentDay;
-  
-  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  monday.setDate(monday.getDate() + distanceToMonday + (weekOffset * 7));
-
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday.getTime());
-    d.setDate(d.getDate() + i);
-    
-    const dY = d.getFullYear();
-    const dM = String(d.getMonth() + 1).padStart(2, '0');
-    const dD = String(d.getDate()).padStart(2, '0');
-    const isoString = `${dY}-${dM}-${dD}`;
-    
-    days.push({
-      isoString,
-      formatted: d.toLocaleDateString('cs-CZ', options),
-      dayOfWeek: d.getDay(),
-      isToday: isoString === todayISO
-    });
-  }
-  return days;
+  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return getIsoWeekDays(todayISO, weekOffset).map(day => {
+    const date = new Date(`${day.isoString}T00:00:00Z`);
+    return {
+      ...day,
+      formatted: date.toLocaleDateString('cs-CZ', options),
+      isToday: day.isoString === todayISO,
+    };
+  });
 };
 
 export default function WeeklySchedulePage() {
@@ -68,7 +52,7 @@ export default function WeeklySchedulePage() {
 
   const [regularHours, setRegularHours] = useState<AvailabilityRow[]>([]);
   const [exceptions, setExceptions] = useState<ExceptionRow[]>([]);
-  const [savingSlots, setSavingSlots] = useState<Set<string>>(new Set());
+  const savingSlots = useRef(new Set<string>());
 
   const currentWeekDays = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
 
@@ -140,36 +124,65 @@ export default function WeeklySchedulePage() {
     if (!trainerId) return;
 
     const slotKey = `${dateStr}-${slotTime}`;
-    if (savingSlots.has(slotKey)) return;
-    setSavingSlots(previous => new Set(previous).add(slotKey));
+    if (savingSlots.current.size > 0) return;
+    savingSlots.current.add(slotKey);
 
     try {
       // Re-read this unique key immediately before writing. The local React
       // state may be stale if another click/tab inserted the row since fetch.
       const { data: existingRows, error: lookupError } = await supabase
         .from('trainer_exceptions')
-        .select('id, type')
+        .select('id, type, start_time, end_time')
         .eq('trainer_id', trainerId)
         .eq('date', dateStr)
-        .eq('start_time', normalizeTime(slotTime))
+        .lte('start_time', normalizeTime(slotTime))
+        .gt('end_time', normalizeTime(slotTime))
+        .order('start_time', { ascending: false })
         .limit(1);
 
       if (lookupError) throw lookupError;
 
       const existingException = existingRows?.[0];
       if (existingException) {
+        const selectedSlotEnd = getEndTime(slotTime);
+        const hasRemainingRange = timeToMinutes(existingException.end_time) > timeToMinutes(selectedSlotEnd);
+
+        // Exceptions may span several slots. Preserve both remaining pieces
+        // before replacing the original row with the selected slot's new state.
+        const hasLeadingRange = timeToMinutes(existingException.start_time) < timeToMinutes(slotTime);
+        if (hasRemainingRange) {
+          const { error: tailError } = await supabase
+            .from('trainer_exceptions')
+            .insert({
+              trainer_id: trainerId,
+              date: dateStr,
+              start_time: selectedSlotEnd,
+              end_time: existingException.end_time,
+              type: existingException.type,
+            });
+          if (tailError) throw tailError;
+        }
+
+        if (hasLeadingRange) {
+          const { error: leadingError } = await supabase
+            .from('trainer_exceptions')
+            .insert({
+              trainer_id: trainerId,
+              date: dateStr,
+              start_time: existingException.start_time,
+              end_time: normalizeTime(slotTime),
+              type: existingException.type,
+            });
+          if (leadingError) throw leadingError;
+        }
+
         const { error } = await supabase
           .from('trainer_exceptions')
           .delete()
           .eq('id', existingException.id);
         if (error) throw error;
       } else {
-        const coveredException = exceptions.find(
-          e => normalizeDate(e.date) === dateStr &&
-            timeToMinutes(slotTime) > timeToMinutes(e.start_time) &&
-            timeToMinutes(slotTime) < timeToMinutes(e.end_time)
-        );
-        const type = currentStatus === 'REGULAR_WORKING' ? 'UNAVAILABLE' : 'AVAILABLE';
+        const type = exceptionTypeForSlot(currentStatus);
         const { error } = await supabase
           .from('trainer_exceptions')
           .upsert({
@@ -181,37 +194,24 @@ export default function WeeklySchedulePage() {
           }, { onConflict: 'trainer_id,date,start_time' });
 
         if (error) throw error;
-
-        // If this slot was inside an older multi-slot exception, keep its
-        // range intact and split it around the newly selected slot.
-        if (coveredException) {
-          const { error: trimError } = await supabase
-            .from('trainer_exceptions')
-            .update({ end_time: slotTime })
-            .eq('id', coveredException.id);
-          if (trimError) throw trimError;
-        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Neznámá chyba';
       console.error('Chyba při ukládání výjimky:', message);
       alert(`Chyba při ukládání: ${message}`);
     } finally {
-      setSavingSlots(previous => {
-        const next = new Set(previous);
-        next.delete(slotKey);
-        return next;
-      });
-      await fetchData(trainerId);
+      try {
+        await fetchData(trainerId);
+      } finally {
+        savingSlots.current.delete(slotKey);
+      }
     }
   };
 
   const calculatedDaysMatrix = useMemo(() => {
     return currentWeekDays.map(day => {
       const slots = GENERATED_SLOTS.map(slot => {
-        const dayException = exceptions.find(
-          e => normalizeDate(e.date) === day.isoString && timeToMinutes(slot) >= timeToMinutes(e.start_time) && timeToMinutes(slot) < timeToMinutes(e.end_time)
-        );
+        const dayException = findExceptionForSlot(exceptions, day.isoString, slot);
         
         if (dayException) {
           return {
