@@ -14,7 +14,7 @@ export default function Footer() {
           {/* 1. O společnosti */}
           <div className="space-y-4">
             <span className="text-xl font-bold tracking-tight text-white">
-              EMS <span className="text-emerald-500">Express</span>
+              EMS <span className="text-emerald-500">ZNOJMO</span>
             </span>
 
             <p className="text-sm leading-relaxed text-zinc-400">
@@ -171,7 +171,7 @@ export default function Footer() {
           
           <div className="space-y-1">
             <p>
-              &copy; {currentYear} EMS Express. Všechna práva vyhrazena.
+              &copy; {currentYear} EMS ZNOJMO. Všechna práva vyhrazena.
             </p>
 
             <p>

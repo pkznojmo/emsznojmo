@@ -88,11 +88,11 @@ export default function Topbar() {
             <div className="flex items-center justify-start">
               <Link href="/" className="flex items-center shrink-0">
                 {logoFailed ? (
-                  <span className="text-lg font-black tracking-tight text-slate-800 sm:text-xl">EMS<span className="text-emerald-600">EXPRESS</span></span>
+                  <span className="text-lg font-black tracking-tight text-slate-800 sm:text-xl">EMS<span className="text-emerald-600">ZNOJMO</span></span>
                 ) : (
                   <Image
                     src="/logo.svg"
-                    alt="EMSExpress Logo"
+                    alt="EMSZNOJMO Logo"
                     width={150}
                     height={41}
                     className="h-9 sm:h-10 md:h-16 w-auto object-contain"
